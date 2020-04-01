@@ -1,9 +1,11 @@
+{-# OPTIONS_GHC -Wall #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 module SecondOrder
   ( newtonMethod
-  , gaussNewtonMethod
+  , gaussNewton
+  , levenbergMarquardt
   ) where
 
 import qualified Data.Foldable as F
@@ -14,7 +16,7 @@ import Foreign.Storable
 
 import Numeric.AD
 import Numeric.AD.Internal.Reverse (Reverse, Tape)
-import Numeric.AD.Rank1.Sparse (Sparse (..))
+import Numeric.AD.Rank1.Sparse (Sparse)
 
 import Numeric.LinearAlgebra
 import qualified Numeric.LinearAlgebra as HMat
@@ -47,16 +49,16 @@ newtonMethod f x0 = go x0
 
         g :: Vector a
         g = fromList $ map fst  $ F.toList gh
-       
+
         h :: Matrix a
         h = (n >< n) $ concat $ map (F.toList . snd) $ F.toList gh
 
 
-gaussNewtonMethod
+gaussNewton
   :: forall f g a. (Traversable f, Traversable g, Storable a, Field a)
   => (forall s. Reifies s Tape => f (Reverse s a) -> g (Reverse s a))
   -> f a -> [f a]
-gaussNewtonMethod f x0 = go x0
+gaussNewton f x0 = go x0
   where
     m = length x0
 
@@ -73,8 +75,72 @@ gaussNewtonMethod f x0 = go x0
 
 
 -- https://en.wikipedia.org/wiki/Gauss%E2%80%93Newton_algorithm
-test_gaussNewtonMethod :: [[Double]]
-test_gaussNewtonMethod = gaussNewtonMethod f (fmap auto x0)
+test_gaussNewton :: [[Double]]
+test_gaussNewton = gaussNewton f (fmap auto x0)
+  where
+    f :: Fractional a => [a] -> [a]
+    f [beta1,beta2] = [y - beta1*x / (beta2 + x) | (x,y) <- zip xs ys]
+      where
+        xs = [0.038, 0.194, 0.425, 0.626, 1.253, 2.500, 3.740]
+        ys = [0.050, 0.127, 0.094, 0.2122, 0.2729, 0.2665, 0.3317]
+
+    x0 :: [Double]
+    x0 = [0.9, 0.2]
+
+
+-- | Levenberg–Marquardt algorithm with Tikhonov Dampling
+levenbergMarquardt
+  :: forall f g a. (Traversable f, Traversable g, Storable a, Field a, Ord a, Show a, Show (f a))
+  => a
+  -> (forall s. Reifies s Tape => f (Reverse s a) -> g (Reverse s a))
+  -> f a -> [f a]
+levenbergMarquardt lambda0 f x0 = go lambda0 x0
+  where
+    m = length x0
+
+    go :: a -> f a -> [f a]
+    go lambda x = x : go lambda' x'
+      where
+        rj = jacobian' f x
+        n = length rj
+
+        r :: Vector a
+        r = fromList $ map fst $ F.toList rj
+
+        j :: Matrix a
+        j = (n >< m) $ concat $ map (F.toList . snd) (F.toList rj)
+
+        gnMat :: Matrix a
+        gnMat = (tr j HMat.<> j) `add` diag (VG.replicate m lambda)
+
+        delta :: Vector a
+        delta = gnMat <\> scale (-1) (r <# j)
+
+        x' :: f a
+        x' = zipWithTV (+) x delta
+
+        loss, loss' :: a
+        loss  = sum [r_j * r_j | r_j <- toList r] / fromIntegral n
+        loss' = sum [r_j * r_j | (r_j, _) <- F.toList (jacobian' f x')] / fromIntegral n
+
+        approx :: Vector a -> a
+        approx delta
+          = loss
+          + (scale (2 / fromIntegral n) r <# j) `dot` delta
+          + (delta `dot` (scale (2 / fromIntegral n) gnMat #> delta)) / 2
+
+        rho :: a
+        rho = (loss' - loss) / (approx delta - approx (VG.replicate m 0))
+
+        lambda' :: a
+        lambda'
+          | rho > 3/4 = lambda * 2 / 3
+          | rho < 1/4 = lambda * 3 / 2
+          | otherwise = lambda
+
+
+test_levenbergMarquardt :: [[Double]]
+test_levenbergMarquardt = levenbergMarquardt 1.0 f (fmap auto x0)
   where
     f :: Fractional a => [a] -> [a]
     f [beta1,beta2] = [y - beta1*x / (beta2 + x) | (x,y) <- zip xs ys]
