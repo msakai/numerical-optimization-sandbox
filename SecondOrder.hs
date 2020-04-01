@@ -41,7 +41,7 @@ newtonMethod f x0 = go x0
     n = length x0
 
     go :: f a -> [f a]
-    go x = x : go (zipWithTV (-) x d)
+    go x = x : go (zipWithTV (-) x (h <\> g))
       where
         (_y, gh) = hessian' f x
 
@@ -50,9 +50,6 @@ newtonMethod f x0 = go x0
        
         h :: Matrix a
         h = (n >< n) $ concat $ map (F.toList . snd) $ F.toList gh
-
-        d :: Vector a
-        d = h <\> g
 
 
 gaussNewtonMethod
@@ -67,7 +64,11 @@ gaussNewtonMethod f x0 = go x0
     go x = x : go (zipWithTV (-) x (pinv j #> r))
       where
         rj = jacobian' f x
+
+        r :: Vector a
         r = fromList $ map fst $ F.toList rj
+
+        j :: Matrix a
         j = (length rj >< m) $ concat $ map (F.toList . snd) (F.toList rj)
 
 
