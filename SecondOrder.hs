@@ -45,6 +45,8 @@ newtonMethod f x0 = go x0
     go :: f a -> [f a]
     go x = x : go (zipWithTV (-) x (h <\> g))
       where
+        _y :: a
+        gh :: f (a, f a)
         (_y, gh) = hessian' f x
 
         g :: Vector a
@@ -65,6 +67,7 @@ gaussNewton f x0 = go x0
     go :: f a -> [f a]
     go x = x : go (zipWithTV (-) x (pinv j #> r))
       where
+        rj :: g (a, f a)
         rj = jacobian' f x
 
         r :: Vector a
@@ -101,7 +104,9 @@ levenbergMarquardt lambda0 f x0 = go lambda0 x0
     go :: a -> f a -> [f a]
     go lambda x = x : go lambda' x'
       where
+        rj :: g (a, f a)
         rj = jacobian' f x
+
         n = length rj
 
         r :: Vector a
