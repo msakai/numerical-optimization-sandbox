@@ -181,7 +181,7 @@ bfgsV
   :: forall a. (Field a, Ord a, Normed (Vector a), Show a)
   => (Vector a -> (a, Vector a))
   -> Vector a -> [Vector a]
-bfgsV f x0 = go (ident n) (ident n) alpha0 (x0, o0, g0)
+bfgsV f x0 = go (ident n) alpha0 (x0, o0, g0)
   where
     n = VG.length x0
 
@@ -193,15 +193,15 @@ bfgsV f x0 = go (ident n) (ident n) alpha0 (x0, o0, g0)
     epsilon :: Double
     epsilon = 1e-5
 
-    go :: Matrix a -> Matrix a -> a -> (Vector a, a, Vector a) -> [Vector a]
-    go b bInv alpha_ (x, o, g) = x :
+    go :: Matrix a -> a -> (Vector a, a, Vector a) -> [Vector a]
+    go bInv alpha_ (x, o, g) = x :
       if converged then
         []
       else
         case err of
           Just e -> error (show e)
           Nothing
-            | sy > 0    -> go b' bInv' 1.0 (x', o', g')
+            | sy > 0    -> go bInv' 1.0 (x', o', g')
             | otherwise -> error ("curvature condition failed: " ++ show sy)
       where
         converged :: Bool
@@ -219,11 +219,7 @@ bfgsV f x0 = go (ident n) (ident n) alpha0 (x0, o0, g0)
         sy :: a
         sy = s <.> y
 
-        b', bInv' :: Matrix a
-        b' =
-            b
-            `add` scale (1 / sy) (y `outer` y)
-            `add` scale (-1 / (s <.> (b #> s))) ((b #> s) `outer` (b #> s))
+        bInv' :: Matrix a
         bInv' =
             bInv
             `add` scale ((sy + y <.> (bInv #> y)) / sy**2) (s `outer` s)
