@@ -8,12 +8,16 @@ module SecondOrder
   , levenbergMarquardt
   , bfgs
   , bfgsV
+  , lbfgs
+  , lbfgsV
 
   , rosenbrock
   ) where
 
 import qualified Data.Foldable as F
 import Data.Reflection (Reifies)
+import Data.Sequence (Seq, ViewL (..), (<|))
+import qualified Data.Sequence as Seq
 import qualified Data.Traversable as T
 import qualified Data.Vector.Generic as VG
 import Foreign.Storable
@@ -158,12 +162,36 @@ test_levenbergMarquardt = levenbergMarquardt 1.0 f x0
     x0 = [0.9, 0.2]
 
 
+-- | Broyden–Fletcher–Goldfarb–Shanno algorithm
+--
 -- https://en.wikipedia.org/wiki/Broyden%E2%80%93Fletcher%E2%80%93Goldfarb%E2%80%93Shanno_algorithm
 bfgs
   :: forall f a. (Traversable f, Field a, Ord a, Normed (Vector a), Show a)
   => (forall s. Reifies s Tape => f (Reverse s a) -> Reverse s a)
   -> f a -> [f a]
 bfgs f x0 = map fromVector $ bfgsV evaluate (toVector x0)
+  where
+    fromVector :: Vector a -> f a
+    fromVector = zipWithTV (\_ x -> x) x0
+
+    toVector :: f a -> Vector a
+    toVector = fromList . F.toList
+
+    evaluate :: Vector a -> (a, Vector a)
+    evaluate x =
+      case grad' f (fromVector x) of
+        (obj, g) -> (obj, toVector g)
+
+
+-- | Limited-memory BFGS
+--
+-- https://en.wikipedia.org/wiki/Limited-memory_BFGS
+lbfgs
+  :: forall f a. (Traversable f, Field a, Ord a, Normed (Vector a), Show a)
+  => Int
+  -> (forall s. Reifies s Tape => f (Reverse s a) -> Reverse s a)
+  -> f a -> [f a]
+lbfgs m f x0 = map fromVector $ lbfgsV m evaluate (toVector x0)
   where
     fromVector :: Vector a -> f a
     fromVector = zipWithTV (\_ x -> x) x0
@@ -184,7 +212,6 @@ bfgsV
 bfgsV f x0 = go (ident n) alpha0 (x0, o0, g0)
   where
     n = VG.length x0
-
     (o0, g0) = f x0
 
     alpha0 :: a
@@ -215,7 +242,6 @@ bfgsV f x0 = go (ident n) alpha0 (x0, o0, g0)
         s, y :: Vector a
         s = scale alpha p
         y = g' `add` scale (-1) g
-
         sy :: a
         sy = s <.> y
 
@@ -226,8 +252,81 @@ bfgsV f x0 = go (ident n) alpha0 (x0, o0, g0)
             `add` scale (-1 / sy) (((bInv #> y) `outer` s) `add` (s `outer` (y <# bInv)))
 
 
+lbfgsV
+  :: forall a. (Field a, Ord a, Normed (Vector a), Show a)
+  => Int
+  -> (Vector a -> (a, Vector a))
+  -> Vector a -> [Vector a]
+lbfgsV m f x0 = go Seq.empty alpha0 (x0, o0, g0)
+  where
+    n = VG.length x0
+    (o0, g0) = f x0
+
+    alpha0 :: a
+    alpha0 = realToFrac $ 1 / norm_2 g0
+
+    epsilon :: Double
+    epsilon = 1e-5
+
+    go :: Seq (Vector a, Vector a, a) -> a -> (Vector a, a, Vector a) -> [Vector a]
+    go hist alpha_ (x, o, g) = x :
+      if converged then
+        []
+      else
+        case err of
+          Just e -> error (show e)
+          Nothing
+            | sy > 0    -> go (Seq.take m ((s,y,rho) <| hist)) 1.0 (x', o', g')
+            | otherwise -> error ("curvature condition failed: " ++ show sy)
+      where
+        converged :: Bool
+        converged = norm_2 g / max (norm_2 x) 1 <= epsilon
+
+        p :: Vector a
+        p = scale (-1) z
+          where
+            q, z0, z :: Vector a
+            histAlpha :: Seq (Vector a, Vector a, a, a)
+            (q, histAlpha) = T.mapAccumL h g hist
+              where
+                h q (s,y,rho) = (q `add` scale (- alpha) y, (s,y,rho,alpha))
+                  where
+                    alpha = rho * (s <.> q)
+            z0 =
+              case Seq.viewl hist of
+                Seq.EmptyL -> q
+                (s, y, rho) Seq.:< _ -> scale ((s <.> y) / (y <.> y)) q
+            z = F.foldr h z0 histAlpha
+              where
+                h (s,y,rho,alpha) z = z `add` scale (alpha - beta) s
+                  where
+                    beta = rho * (y <.> z)
+
+        (err, alpha, (x', o', g')) = LS.lineSearch LS.defaultParams f (x, o, g) p alpha_
+
+        s, y :: Vector a
+        s = scale alpha p
+        y = g' `add` scale (-1) g
+        sy, rho :: a
+        sy = s <.> y
+        rho = 1 / sy
+
+
 -- example from https://en.wikipedia.org/wiki/Gauss%E2%80%93Newton_algorithm
 test_BFGS = bfgs f x0
+  where
+    f :: (Fractional a, Floating a) => [a] -> a
+    f [beta1,beta2] = sum [(y - beta1*x / (beta2 + x))**2 | (x,y) <- zip xs ys]
+      where
+        xs = [0.038, 0.194, 0.425, 0.626, 1.253, 2.500, 3.740]
+        ys = [0.050, 0.127, 0.094, 0.2122, 0.2729, 0.2665, 0.3317]
+
+    x0 :: [Double]
+    x0 = [0.9, 0.2]
+
+
+-- example from https://en.wikipedia.org/wiki/Gauss%E2%80%93Newton_algorithm
+test_LBFGS = lbfgs 10 f x0
   where
     f :: (Fractional a, Floating a) => [a] -> a
     f [beta1,beta2] = sum [(y - beta1*x / (beta2 + x))**2 | (x,y) <- zip xs ys]
