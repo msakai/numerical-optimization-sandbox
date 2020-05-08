@@ -19,10 +19,16 @@ clip lo hi x
   | x < lo = lo
   | otherwise = x
 
+midpoint :: Fractional a => a -> a -> a
+midpoint x y = x + 0.5 * (y - x)
+
+signdiff :: (Fractional a, Ord a) => a -> a -> Bool
+signdiff x y = x * (y / abs y) < 0
+
 
 -- | The minimizer of the interpolated cubic.
 cubicMinimizer
-  :: (Real a, Floating a)
+  :: (Ord a, Floating a)
   => a -- ^ The value of one point, @u@.
   -> a -- ^ The value of @f(u)@.
   -> a -- ^ The value of @f'(u)@.
@@ -49,7 +55,7 @@ cubicMinimizer u fu du v fv dv = u + r * d
 
 -- | The minimizer of the interpolated cubic.
 cubicMinimizer2
-  :: (Real a, Floating a)
+  :: (Ord a, Floating a)
   => a -- ^ The value of one point, @u@.
   -> a -- ^ The value of @f(u)@.
   -> a -- ^ The value of @f'(u)@.
@@ -80,7 +86,7 @@ cubicMinimizer2 u fu du v fv dv xmin xmax
 
 
 quardMinimizer
-  :: (Real a, Floating a)
+  :: (Ord a, Fractional a)
   => a -- ^ The value of one point, @u@.
   -> a -- ^ The value of @f(u)@.
   -> a -- ^ The value of @f'(u)@.
@@ -93,7 +99,7 @@ quardMinimizer u fu du v fv = u + du / ((fu - fv) / a + du) / 2 * a
 
 
 quardMinimizer2
-  :: (Real a, Floating a)
+  :: (Ord a, Fractional a)
   => a -- ^ The value of one point, @u@.
   -> a -- ^ The value of @f'(u)@.
   -> a -- ^ The value of another point, @v@.
@@ -126,7 +132,7 @@ If the bracket is set to true, the minimizer has been bracketed in
 an interval of uncertainty with endpoints between @x@ and @y@.
 -}
 updateTrialInterval
-  :: (Real a, Floating a)
+  :: (Ord a, Floating a)
   => (a, a, a) -- ^ The value of one endpoint @x@, the value of @f(x)@ and the value of @f'(x)@
   -> (a, a, a) -- ^ The value of another endpoint @y@, the value of @f(y)@ and the value of @f'(y)@
   -> (a, a, a) -- ^ The value of the trial value @t@, the value of @f(t)@ and the value of @f'(t)@
@@ -147,7 +153,7 @@ updateTrialInterval (x, fx, dx) (y, fy, dy) (t, ft, dt) tmin tmax brackt
       Left ERR_INCORRECT_TMINMAX
   | otherwise = Right (newt3, (x', fx', dx'), (y', fy', dy'), brackt')
   where
-    dsign = signum dt /= signum dx
+    dsign = signdiff dt dx
 
     (newt1, brackt', bound)
       | fx < ft =
@@ -161,7 +167,7 @@ updateTrialInterval (x, fx, dx) (y, fy, dy) (t, ft, dt) tmin tmax brackt
               mq = quardMinimizer x fx dx t ft
           in ( if abs (mc - x) < abs (mq - x)
                then mc
-               else mc + 0.5 * (mq - mc) -- (mq + mc) / 2
+               else midpoint mc mq
              , True
              , True
              )
@@ -269,7 +275,7 @@ data Params a
     -- be increased).
 
   , paramsFTol :: a
-    -- ^ A parameter to control the accuracy of the line search routine.
+    -- ^ A parameter to control the accuracy of the line search routine.
     --
     -- The default value is @1e-4@. This parameter should be greater
     -- than zero and smaller than @0.5@.
@@ -282,7 +288,7 @@ data Params a
     -- evaluations are inexpensive with respect to the cost of the
     -- iteration (which is sometimes the case when solving very large
     -- problems) it may be advantageous to set this parameter to a small
-    -- value. A typical small value is @0.1@. This parameter shuold be
+    -- value. A typical small value is @0.1@. This parameter should be
     -- greater than the 'paramsFTol' parameter (@1e-4@) and smaller than
     -- @1.0@.
     -- "η" in [MoreThuente1994].
@@ -314,26 +320,26 @@ defaultParams
   }
 
 lineSearch
-  :: forall a. (RealFrac a, Floating a, LA.Field a)
+  :: forall a. (Ord a, Floating a, LA.Numeric a)
   => Params a
   -> (LA.Vector a -> (a, LA.Vector a))
   -> (LA.Vector a, a, LA.Vector a)
   -> LA.Vector a
   -> a
-  -> (Maybe Error, a, LA.Vector a, a, LA.Vector a)
+  -> (Maybe Error, a, (LA.Vector a, a, LA.Vector a))
 lineSearch = lineSearchMoreThuente
 
 lineSearchMoreThuente
-  :: forall a. (RealFrac a, Floating a, LA.Numeric a)
+  :: forall a. (Ord a, Floating a, LA.Numeric a)
   => Params a
   -> (LA.Vector a -> (a, LA.Vector a))
   -> (LA.Vector a, a, LA.Vector a)
   -> LA.Vector a
   -> a
-  -> (Maybe Error, a, LA.Vector a, a, LA.Vector a)
+  -> (Maybe Error, a, (LA.Vector a, a, LA.Vector a))
 lineSearchMoreThuente params evaluate (x0, f0, g0) s step0
-  | step0 < 0 = (Just ERR_INVALIDPARAMETERS, 0, x0, f0, g0)
-  | 0 < dg0   = (Just ERR_INCREASEGRADIENT, 0, x0, f0, g0)
+  | step0 < 0 = (Just ERR_INVALIDPARAMETERS, 0, (x0, f0, g0))
+  | 0 < dg0   = (Just ERR_INCREASEGRADIENT, 0, (x0, f0, g0))
   | otherwise = seq dgtest $ go 0 Nothing False True width0 prevWidth0 (0, f0, dg0) (0, f0, dg0) step0
   where
     -- φ(step) = f(x0 + step * s) = f(x)
@@ -351,26 +357,26 @@ lineSearchMoreThuente params evaluate (x0, f0, g0) s step0
       -> (a, a, a)
       -> (a, a, a)
       -> a
-      -> (Maybe Error, a, LA.Vector a, a, LA.Vector a)
+      -> (Maybe Error, a, (LA.Vector a, a, LA.Vector a))
     go count uinfo brackt stage1 width prev_width (stx, fx, dgx) (sty, fy, dgy) step_
       | brackt && (step <= stmin || stmax <= step || uinfo /= Nothing) =
           -- Rounding errors prevent further progress.
-          (Just ERR_ROUNDING_ERROR, step, x, f, g)
+          (Just ERR_ROUNDING_ERROR, step, (x, f, g))
       | step == paramsMaxStep params && sufficientDecrease && dg <= dgtest =
           -- The step is the maximum value.
-          (Just ERR_MAXIMUMSTEP, step, x, f, g)
+          (Just ERR_MAXIMUMSTEP, step, (x, f, g))
       | step == paramsMinStep params && (not sufficientDecrease || dgtest <= dg) =
           -- The step is the minimum value.
-          (Just ERR_MINIMUMSTEP, step, x, f, g)
+          (Just ERR_MINIMUMSTEP, step, (x, f, g))
       | brackt && stmax - stmin <= paramsXTol params * stmax =
           -- Relative width of the interval of uncertainty is at most xtol.
-          (Just ERR_WIDTHTOOSMALL, step, x, f, g)
-      | paramsMaxLineSearch params <= count =
+          (Just ERR_WIDTHTOOSMALL, step, (x, f, g))
+      | paramsMaxLineSearch params <= count + 1 =
           -- Maximum number of iteration
-          (Just ERR_MAXIMUMLINESEARCH, step, x, f, g)
+          (Just ERR_MAXIMUMLINESEARCH, step, (x, f, g))
       | sufficientDecrease && abs dg <= paramsGTol params * (-dg0) =
           -- The sufficient decrease condition and the directional derivative condition hold.
-          (Nothing, step, x, f, g)
+          (Nothing, step, (x, f, g))
       | otherwise =
           go (count + 1) uinfo' brackt' stage1' width' prev_width' (stx', fx', dgx') (sty', fy', dgy') step''
       where
@@ -400,12 +406,24 @@ lineSearchMoreThuente params evaluate (x0, f0, g0) s step0
         (f, g) = evaluate x
         dg = g <.> s
 
+        -- φ(α) <= φ(0) + α μ φ'(0)
         sufficientDecrease :: Bool
         sufficientDecrease = f <= f0 + step * dgtest
 
         {-
           In the first stage we seek a step for which the modified
           function has a nonpositive value and nonnegative derivative.
+
+          ψ(α) <= 0
+          ⇔ φ(α) - φ(0) - μ φ'(0) <= 0
+          ⇔ φ(α) <= φ(0) + μ φ'(0)
+          ⇔ sufficientDecrease
+
+          ψ'(α) >= 0
+          ⇔ φ'(α) >= 0
+          で、min(μ,η) φ'(0) <= φ'(α) の左辺は少し余裕を持たせている?
+
+          ftol (μ) の方が gtol (η) より小さい前提のはずなのに min をとっているのは何故?
          -}
         stage1'
           | stage1 && sufficientDecrease && min (paramsFTol params) (paramsGTol params) * dg0 <= dg = False
@@ -420,7 +438,8 @@ lineSearchMoreThuente params evaluate (x0, f0, g0) s step0
                    obtained but the decrease is not sufficient.
                  -}
                 let -- Define the modified function and derivative values.
-                    -- ψ(step) = φ(step) - φ(0) - μ φ'(0) step だとすると - φ(0) の項は定数差なので無視されている?
+                    -- dgtest = μ φ'(0) で
+                    -- ψ(α) = φ(α) - φ(0) - μ φ'(0) α だとすると - φ(0) の項は定数差なので無視されている?
                     fm = f - step * dgtest
                     fxm = fx - stx * dgtest
                     fym = fy - sty * dgtest
@@ -430,10 +449,10 @@ lineSearchMoreThuente params evaluate (x0, f0, g0) s step0
                 in  case updateTrialInterval (stx, fxm, dgxm) (sty, fym, dgym) (step, fm, dgm) stmin stmax brackt of
                       Left err ->
                         ( Just err
-                        , step'
+                        , step
                         , (stx, fx, dgx)
                         , (sty, fy, dgy)
-                        , brackt'
+                        , brackt
                         )
                       Right (step', (stx', fxm', dgxm'), (sty', fym', dgym'), brackt') ->
                         ( Nothing
@@ -446,10 +465,10 @@ lineSearchMoreThuente params evaluate (x0, f0, g0) s step0
                 case updateTrialInterval (stx, fx, dgx) (sty, fy, dgy) (step, f, dg) stmin stmax brackt of
                   Left err ->
                     ( Just err
-                    , step'
+                    , step
                     , (stx, fx, dgx)
                     , (sty, fy, dgy)
-                    , brackt'
+                    , brackt
                     )
                   Right (step', (stx', fx', dgx'), (sty', fy', dgy'), brackt') ->
                     ( Nothing
@@ -462,7 +481,7 @@ lineSearchMoreThuente params evaluate (x0, f0, g0) s step0
         (step'', prev_width', width')
             | brackt' =
                 ( if 0.66 * prev_width <= abs (sty' - stx')
-                  then stx' + 0.5 * (sty' - stx')
+                  then midpoint stx' sty'
                   else step'
                 , width
                 , abs (sty' - stx')

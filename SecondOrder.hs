@@ -7,6 +7,9 @@ module SecondOrder
   , gaussNewton
   , levenbergMarquardt
   , bfgs
+  , bfgsV
+
+  , rosenbrock
   ) where
 
 import qualified Data.Foldable as F
@@ -16,18 +19,9 @@ import qualified Data.Vector.Generic as VG
 import Foreign.Storable
 import Numeric.AD
 import Numeric.AD.Internal.Reverse (Reverse, Tape)
-import Numeric.AD.Internal.On (On (..))
-import Numeric.AD.Internal.Or (Or (..), Chosen (..), T, F, runL, runR)
-import Numeric.AD.Rank1.Forward (Forward)
-import qualified Numeric.AD.Rank1.Forward as Forward
-import Numeric.AD.Rank1.Kahn (Kahn)
-import qualified Numeric.AD.Rank1.Kahn as Kahn
 import Numeric.AD.Rank1.Sparse (Sparse)
-import qualified Numeric.AD.Rank1.Newton as Newton1
 import Numeric.LinearAlgebra
-import qualified Numeric.LinearAlgebra as LA
-
-import Debug.Trace
+import qualified LineSearch as LS
 
 
 zipWithTV :: (Traversable f, Storable b) => (a -> b -> c) -> f a -> Vector b -> f c
@@ -43,7 +37,7 @@ zipWithTV u x v = snd $ T.mapAccumL (\i x_i -> (i+1, u x_i (v VG.! i))) 0 x
 -- >>> rosenbrock (newtonMethod rosenbrock [0, 0] !! 2) < 0.1
 -- True
 newtonMethod
-  :: forall f a. (Traversable f, Storable a, Field a)
+  :: forall f a. (Traversable f, Field a)
   => (forall s. f (AD s (Sparse a)) -> AD s (Sparse a))
   -> f a -> [f a]
 newtonMethod f x0 = go x0
@@ -65,7 +59,7 @@ newtonMethod f x0 = go x0
 
 
 gaussNewton
-  :: forall f g a. (Traversable f, Traversable g, Storable a, Field a)
+  :: forall f g a. (Traversable f, Traversable g, Field a)
   => (forall s. Reifies s Tape => f (Reverse s a) -> g (Reverse s a))
   -> f a -> [f a]
 gaussNewton f x0 = go x0
@@ -100,7 +94,7 @@ test_gaussNewton = gaussNewton f x0
 
 -- | Levenberg–Marquardt algorithm with Tikhonov Dampling
 levenbergMarquardt
-  :: forall f g a. (Traversable f, Traversable g, Storable a, Field a, Ord a, Show a, Show (f a))
+  :: forall f g a. (Traversable f, Traversable g, Field a, Ord a)
   => a
   -> (forall s. Reifies s Tape => f (Reverse s a) -> g (Reverse s a))
   -> f a -> [f a]
@@ -166,58 +160,74 @@ test_levenbergMarquardt = levenbergMarquardt 1.0 f x0
 
 -- https://en.wikipedia.org/wiki/Broyden%E2%80%93Fletcher%E2%80%93Goldfarb%E2%80%93Shanno_algorithm
 bfgs
-  :: forall f a. (Traversable f, Numeric a, Field a, Ord a, Show a, Show (f (f a)))
-  => (forall s. Chosen s => f (Or s (On (Forward (Forward a))) (Kahn a)) -> Or s (On (Forward (Forward a))) (Kahn a))
+  :: forall f a. (Traversable f, Field a, Ord a, Normed (Vector a), Show a)
+  => (forall s. Reifies s Tape => f (Reverse s a) -> Reverse s a)
   -> f a -> [f a]
-bfgs f x0 = go (ident n) (ident n) x0
+bfgs f x0 = map fromVector $ bfgsV evaluate (toVector x0)
   where
-    n = length x0
+    fromVector :: Vector a -> f a
+    fromVector = zipWithTV (\_ x -> x) x0
 
-    go :: Matrix a -> Matrix a -> f a -> [f a]
-    go b bInv x = x : if sy > 0 then go b' bInv' x' else error ("curvature condition failed: " ++ show sy)
+    toVector :: f a -> Vector a
+    toVector = fromList . F.toList
+
+    evaluate :: Vector a -> (a, Vector a)
+    evaluate x =
+      case grad' f (fromVector x) of
+        (obj, g) -> (obj, toVector g)
+
+
+bfgsV
+  :: forall a. (Field a, Ord a, Normed (Vector a), Show a)
+  => (Vector a -> (a, Vector a))
+  -> Vector a -> [Vector a]
+bfgsV f x0 = go (ident n) (ident n) alpha0 (x0, o0, g0)
+  where
+    n = VG.length x0
+
+    (o0, g0) = f x0
+
+    alpha0 :: a
+    alpha0 = realToFrac $ 1 / norm_2 g0
+
+    epsilon :: Double
+    epsilon = 1e-5
+
+    go :: Matrix a -> Matrix a -> a -> (Vector a, a, Vector a) -> [Vector a]
+    go b bInv alpha_ (x, o, g) = x :
+      if converged then
+        []
+      else
+        case err of
+          Just e -> error (show e)
+          Nothing
+            | sy > 0    -> go b' bInv' 1.0 (x', o', g')
+            | otherwise -> error ("curvature condition failed: " ++ show sy)
       where
-        h :: Matrix a
-        h = (n >< n) $ concat $ map F.toList $ F.toList $ hessianFF (lfu f) x
-
-        g, g' :: Vector a
-        g  = fromList $ F.toList $ Kahn.grad (rfu f) x
-        g' = fromList $ F.toList $ Kahn.grad (rfu f) x'
+        converged :: Bool
+        converged = norm_2 g / max (norm_2 x) 1 <= epsilon
 
         p :: Vector a
         p = scale (-1) $ bInv #> g
 
-        alpha :: a
-        alpha = last $ take 20 $ Newton1.extremum (\a -> lfu f $ zipWithTV (\x_i p_i -> auto x_i + a * auto p_i) x p) 0
+        (err, alpha, (x', o', g')) = LS.lineSearch LS.defaultParams f (x, o, g) p alpha_
 
         s, y :: Vector a
         s = scale alpha p
         y = g' `add` scale (-1) g
 
         sy :: a
-        sy = s `dot` y
-
-        x' :: f a
-        x' = zipWithTV (+) x s
+        sy = s <.> y
 
         b', bInv' :: Matrix a
         b' =
             b
             `add` scale (1 / sy) (y `outer` y)
-            `add` scale (-1 / (s `dot` (b #> s))) ((b #> s) `outer` (b #> s))
+            `add` scale (-1 / (s <.> (b #> s))) ((b #> s) `outer` (b #> s))
         bInv' =
             bInv
-            `add` scale ((sy + y `dot` (bInv #> y)) / sy**2) (s `outer` s)
+            `add` scale ((sy + y <.> (bInv #> y)) / sy**2) (s `outer` s)
             `add` scale (-1 / sy) (((bInv #> y) `outer` s) `add` (s `outer` (y <# bInv)))
-
-
-lfu :: Functor f => (f (Or F a b) -> Or F a b) -> f a -> a
-lfu f = runL . f . fmap L
-
-rfu :: Functor f => (f (Or T a b) -> Or T a b) -> f b -> b
-rfu f = runR . f . fmap R
-
-hessianFF :: (Traversable f, Num a) => (f (On (Forward (Forward a))) -> On (Forward (Forward a))) -> f a -> f (f a)
-hessianFF f = Forward.jacobian (Forward.grad (off . f . fmap On))
 
 
 -- example from https://en.wikipedia.org/wiki/Gauss%E2%80%93Newton_algorithm
@@ -231,3 +241,10 @@ test_BFGS = bfgs f x0
 
     x0 :: [Double]
     x0 = [0.9, 0.2]
+
+
+rosenbrock [x,y] = sq (1 - x) + 100 * sq (y - sq x)
+  where
+    -- Note that 'sq x = x * x' did not work with Kahn mode.
+    -- https://github.com/ekmett/ad/pull/84
+    sq x = x ** 2
