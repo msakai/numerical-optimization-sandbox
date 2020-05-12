@@ -85,7 +85,7 @@ cubicMinimizer2 u fu du v fv dv xmin xmax
     r = p / q
 
 
-quardMinimizer
+quadMinimizer
   :: (Ord a, Fractional a)
   => a -- ^ The value of one point, @u@.
   -> a -- ^ The value of @f(u)@.
@@ -93,19 +93,19 @@ quardMinimizer
   -> a -- ^ The value of another point, @v@.
   -> a -- ^ The value of @f(v)@.
   -> a
-quardMinimizer u fu du v fv = u + du / ((fu - fv) / a + du) / 2 * a
+quadMinimizer u fu du v fv = u + du / ((fu - fv) / a + du) / 2 * a
   where
     a = v - u
 
 
-quardMinimizer2
+quadMinimizer2
   :: (Ord a, Fractional a)
   => a -- ^ The value of one point, @u@.
   -> a -- ^ The value of @f'(u)@.
   -> a -- ^ The value of another point, @v@.
   -> a -- ^ The value of @f'(v)@.
   -> a
-quardMinimizer2 u du v dv = v + dv / (dv - du) * a
+quadMinimizer2 u du v dv = v + dv / (dv - du) * a
   where
     a = u - v
 
@@ -164,7 +164,7 @@ updateTrialInterval (x, fx, dx) (y, fy, dy) (t, ft, dt) tmin tmax brackt
             the average of the minimizers is taken.
           -}
           let mc = cubicMinimizer x fx dx t ft dt
-              mq = quardMinimizer x fx dx t ft
+              mq = quadMinimizer x fx dx t ft
           in ( if abs (mc - x) < abs (mq - x)
                then mc
                else midpoint mc mq
@@ -179,7 +179,7 @@ updateTrialInterval (x, fx, dx) (y, fy, dy) (t, ft, dt) tmin tmax brackt
             the cubic one is taken, else the quadratic one is taken.
            -}
           let mc = cubicMinimizer x fx dx t ft dt
-              mq = quardMinimizer2 x dx t dt
+              mq = quadMinimizer2 x dx t dt
           in ( if abs (mc - t) > abs (mq - t)
                then mc
                else mq
@@ -199,7 +199,7 @@ updateTrialInterval (x, fx, dx) (y, fy, dy) (t, ft, dt) tmin tmax brackt
             farthest away is taken.
            -}
           let mc = cubicMinimizer2 x fx dx t ft dt tmin tmax
-              mq = quardMinimizer2 x dx t dt
+              mq = quadMinimizer2 x dx t dt
           in ( if brackt then
                  if abs (t - mc) < abs (t - mq)
                  then mc
