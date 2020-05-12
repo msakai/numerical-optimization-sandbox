@@ -259,7 +259,6 @@ lbfgsV
   -> Vector a -> [Vector a]
 lbfgsV m f x0 = go Seq.empty alpha0 (x0, o0, g0)
   where
-    n = VG.length x0
     (o0, g0) = f x0
 
     alpha0 :: a
@@ -283,24 +282,18 @@ lbfgsV m f x0 = go Seq.empty alpha0 (x0, o0, g0)
         converged = norm_2 g / max (norm_2 x) 1 <= epsilon
 
         p :: Vector a
-        p = scale (-1) z
+        p = scale (-1) (f (F.toList hist) g)
           where
-            q, z0, z :: Vector a
-            histAlpha :: Seq (Vector a, Vector a, a, a)
-            (q, histAlpha) = T.mapAccumL h g hist
+            f :: [(Vector a, Vector a, a)] -> Vector a -> Vector a
+            f ((s,y,rho) : xs) q = z `add` scale (alpha - beta) s
               where
-                h q (s,y,rho) = (q `add` scale (- alpha) y, (s,y,rho,alpha))
-                  where
-                    alpha = rho * (s <.> q)
-            z0 =
+                alpha = rho * (s <.> q)
+                z = f xs (q `add` scale (- alpha) y)
+                beta = rho * (y <.> z)
+            f [] q =
               case Seq.viewl hist of
-                Seq.EmptyL -> q
-                (s, y, rho) Seq.:< _ -> scale ((s <.> y) / (y <.> y)) q
-            z = F.foldr h z0 histAlpha
-              where
-                h (s,y,rho,alpha) z = z `add` scale (alpha - beta) s
-                  where
-                    beta = rho * (y <.> z)
+                EmptyL -> q
+                (s, y, _rho) :< _ -> scale (s <.> y / y <.> y) q
 
         (err, alpha, (x', o', g')) = LS.lineSearch LS.defaultParams f (x, o, g) p alpha_
 
