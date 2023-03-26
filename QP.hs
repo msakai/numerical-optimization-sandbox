@@ -61,7 +61,7 @@ quadprog qs c as b x0
               ]
             alpha = minimum (1 : map snd alphas)
             x''  = x `add` scale alpha d
-            ws'' = ws `IntSet.union` IntSet.fromList [i | (i, _) <- alphas, (b VG.! i) - (as ! i) <.> x'' < tol]
+            ws'' = ws `IntSet.union` IntSet.fromList [i | (i, alpha') <- alphas, alpha' <= alpha]
          in go ws'' x''
       where
         m' = IntSet.size ws
