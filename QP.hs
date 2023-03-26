@@ -107,13 +107,13 @@ test_no_minimum = (x, f x)  -- should be error, but ...
 
 
 -- Example 3: Constrained QP with non-binding constraints
-test_nonbinding_constraints = (x, f x)  -- should be ((4,2), -32), but ...
+test_nonbinding_constraints = (x, f x) -- ((4,2), -32)
   where
     qs = (2 >< 2) [2,0,0,8]
     c = VG.fromList [-8,-16]
-    as = (2 >< 2) [1,1,1,0]
-    b = VG.fromList [5, 3]
-    x0 = VG.fromList [0,0]
+    as = (2 >< 2) [-1,-1,-1,0]
+    b = VG.fromList [-5,-3]
+    x0 = VG.fromList [10,10]
     f x = (x <.> (qs #> x)) / 2 + (c <.> x)
 
     x :: Vector Double
@@ -121,13 +121,13 @@ test_nonbinding_constraints = (x, f x)  -- should be ((4,2), -32), but ...
 
 
 -- Example 4: Some constraints are binding
-test_some_binding_constraints = (x, f x)  -- should be ((4.5, 2),  -31.75)
+test_some_binding_constraints = (x, f x)  -- should be ((4.5, 2), -31.75), but ...
   where
     qs = (2 >< 2) [2,0,0,8]
     c = VG.fromList [-8,-16]
-    as = (2 >< 2) [1,1,1,0]
-    b = VG.fromList [5, 4.5]
-    x0 = VG.fromList [0, 0]
+    as = (2 >< 2) [-1,-1,-1,0]
+    b = VG.fromList [-5, -4.5]
+    x0 = VG.fromList [10, 10]
     f x = (x <.> (qs #> x)) / 2 + (c <.> x)
 
     x :: Vector Double
@@ -135,13 +135,13 @@ test_some_binding_constraints = (x, f x)  -- should be ((4.5, 2),  -31.75)
 
 
 -- Example 5: Some constraints are binding
-test_some_binding_constraints_2 = xs  -- should be ((4.8, 4.2), -31.2), but ...
+test_some_binding_constraints_2 = (xs, f x)  -- ((4.8, 4.2), -31.2)
   where
     qs = (2 >< 2) [2,0,0,8]
     c = VG.fromList [-8,-16]
-    as = (2 >< 2) [1,1,1,0]
-    b = VG.fromList [7, 3]
-    x0 = VG.fromList [0, 0]
+    as = (2 >< 2) [-1,-1,-1,0]
+    b = VG.fromList [-7, -3]
+    x0 = VG.fromList [10, 10]
     f x = (x <.> (qs #> x)) / 2 + (c <.> x)
     xs = quadprog qs c as b x0
 
