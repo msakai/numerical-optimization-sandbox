@@ -68,7 +68,7 @@ quadprog qs c as b x0
         wsV :: Vector Int
         wsV = VG.fromListN m' (IntSet.toAscList ws)
         as' = as ? IntSet.toAscList ws
-        b' = VG.generate m' (b VG.!)
+        b' = VG.fromListN m' [b VG.! i | i <- IntSet.toAscList ws]
         (x',y') = VG.splitAt n (mat <\> (scale (-1) c VG.++ b'))
           where
             mat =
@@ -121,7 +121,7 @@ test_nonbinding_constraints = (x, f x) -- ((4,2), -32)
 
 
 -- Example 4: Some constraints are binding
-test_some_binding_constraints = (x, f x)  -- should be ((4.5, 2), -31.75), but ...
+test_some_binding_constraints = (x, f x)  -- ((4.5, 2), -31.75)
   where
     qs = (2 >< 2) [2,0,0,8]
     c = VG.fromList [-8,-16]
@@ -135,7 +135,7 @@ test_some_binding_constraints = (x, f x)  -- should be ((4.5, 2), -31.75), but .
 
 
 -- Example 5: Some constraints are binding
-test_some_binding_constraints_2 = (xs, f x)  -- ((4.8, 4.2), -31.2)
+test_some_binding_constraints_2 = (xs, f x)  -- ((4.8, 2.2), -31.2)
   where
     qs = (2 >< 2) [2,0,0,8]
     c = VG.fromList [-8,-16]
