@@ -73,28 +73,19 @@ solveQuadProg (QuadProg qs c as b) x0
 
     go :: IntSet -> Vector a -> [Vector a]
     go !ws !x = assert (size as' == (m',n)) $ assert (size x' == n) $ assert (size y' == m') $ (x :) $
-      if VG.all (\z -> abs z < tol) (x' `sub` x) then
-        if VG.all (> - tol) y' then
-          -- converged
-          let _y :: Vector a
-              _y = VG.replicate m 0 VG.// zip (IntSet.toAscList ws) (VG.toList y')
-           in []
-        else
-          go (IntSet.delete (wsV VG.! VG.minIndex y') ws) x
-      else
-        let d = x' `sub` x
-            alphas =
-              [ (i, alpha)
-              | i <- IntSet.toList (wsAll IntSet.\\ ws)
-              , let as_i = as ! i
-              , let v_i = as_i <.> d
-              , v_i > 0
-              , let alpha = ((b VG.! i) - as_i <.> x) / v_i
-              ]
-            alpha = minimum (1 : map snd alphas)
-            x''  = x `add` scale alpha d
+      if any (\(_, alpha) -> alpha < 1) alphas then
+        let alpha = minimum (map snd alphas)
             ws'' = ws `IntSet.union` IntSet.fromList [i | (i, alpha') <- alphas, alpha' <= alpha]
+            x'' = x `add` scale alpha d
          in go ws'' x''
+      else if VG.all (> - tol) y' then
+        -- converged
+        let _y :: Vector a
+            _y = VG.replicate m 0 VG.// zip (IntSet.toAscList ws) (VG.toList y')
+         in [x']
+      else
+        go (IntSet.delete (wsV VG.! VG.minIndex y') ws) x
+
       where
         m' = IntSet.size ws
         wsV :: Vector Int
@@ -107,6 +98,15 @@ solveQuadProg (QuadProg qs c as b) x0
               qs ||| tr' as'
               ===
               as' ||| konst 0 (m',m')
+        d = x' `sub` x
+        alphas =
+          [ (i, alpha)
+          | i <- IntSet.toList (wsAll IntSet.\\ ws)
+          , let as_i = as ! i
+          , let v_i = as_i <.> d
+          , v_i > 0
+          , let alpha = ((b VG.! i) - as_i <.> x) / v_i
+          ]
 
 
 sub :: (Additive (c t), Linear t c, Num t) => c t -> c t -> c t
