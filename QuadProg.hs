@@ -3,7 +3,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-module QP
+module QuadProg
   ( QuadProg (..)
   , evalQuadProgObj
   , evalQuadProg
