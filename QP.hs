@@ -10,6 +10,7 @@ module QP
   , solveQuadProg
 
   , test_unconstrained_qp
+  , test_unconstrained_qp_2
   , test_no_minimum
   , test_nonbinding_constraints
   , test_some_binding_constraints
@@ -122,6 +123,18 @@ test_unconstrained_qp = (x, evalQuadProgObj prob x)  -- ((4,2), -32)
              (VG.fromList [-8,-16])
              ((1 >< 2) [0,0])
              (VG.fromList [0])
+    x0 = VG.fromList [0,0]
+    x = last $ solveQuadProg prob x0
+
+
+test_unconstrained_qp_2 = (x, evalQuadProgObj prob x)  -- ((4,2), -32)
+  where
+    prob :: QuadProg Double
+    prob = QuadProg
+             ((2 >< 2) [2,0,0,8])
+             (VG.fromList [-8,-16])
+             ((0 >< 2) [])
+             (VG.fromList [])
     x0 = VG.fromList [0,0]
     x = last $ solveQuadProg prob x0
 
