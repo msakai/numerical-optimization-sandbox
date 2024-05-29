@@ -15,6 +15,10 @@ module SecondOrder
   ) where
 
 import qualified Data.Foldable as F
+import Data.IntSet (IntSet)
+import qualified Data.IntSet as IntSet
+import Data.List (sortBy)
+import Data.Ord
 import Data.Reflection (Reifies)
 import Data.Sequence (Seq, ViewL (..), (<|))
 import qualified Data.Sequence as Seq
@@ -303,6 +307,63 @@ lbfgsV m f x0 = go Seq.empty alpha0 (x0, o0, g0)
         sy, rho :: a
         sy = s <.> y
         rho = 1 / sy
+
+
+-- | Compute generalized Cauchy point of a function f(x0) + g (x - x0) + (1/2) (x - x0)^T B (x - x0)
+generalizedCauchyPoint
+  :: forall a. (Field a, Ord a, Normed (Vector a), Show a)
+  => Vector a -- ^ x0
+  -> a        -- ^ f(x0)
+  -> Vector a -- ^ g
+  -> (Vector a -> Vector a) -- ^ @(B '#>')@
+  -> Vector a -- ^ lower bounds
+  -> Vector a -- ^ upper bounds
+  -> (Vector a, IntSet) -- ^ generalized cauchy point and its active set
+generalizedCauchyPoint x0 f0 g bMult lb ub = go 0 x0 d0 IntSet.empty breakpoints
+  where
+    breakpoints :: [(a, Int, a)]
+    breakpoints =
+      sortBy (comparing (\(ti, _xi, _i) -> ti)) $
+      concatMap
+        (\(i, gi) ->
+           case gi `compare` 0 of
+             LT -> [(((x0 VG.! i) - (ub VG.! i)) / gi, i, ub VG.! i)]
+             GT -> [(((x0 VG.! i) - (lb VG.! i)) / gi, i, lb VG.! i)]
+             EQ -> []
+        ) $
+      zip [(0::Int)..] (VG.toList g)
+
+    d0 :: Vector a
+    d0 = scale (-1) g
+
+    {-
+    Let Δt := t - tj and x := xj + Δt dj, then:
+    f(x0) + g (x - x0) + (1/2) (x - x0)^T B (x - x0)
+    = f(x0) + g (xj + Δt dj - x0) + (1/2) (xj + Δt dj - x0)^T B (xj + Δt dj - x0)
+    = f(x0) + g (Δt dj + (xj - x0)) + (1/2) (Δt dj + (xj - x0))^T B (Δt dj + (xj - x0))
+    = f(x0) + g (Δt dj) + g (xj - x0) + (1/2) ((Δt dj) B (Δt dj) + (Δt dj) B (xj - x0) + (xj - x0)^T B (Δt dj) + (xj - x0)^T B (xj - x0))
+    = (f(x0) + g (xj - x0) + (1/2) (xj - x0)^T B (xj - x0))
+      + (g dj + dj B (xj - x0) Δt
+      + (1/2) (dj B dj) Δt²
+    = a0 + a1 Δt + (1/2) a2 Δt²
+    -}
+    go :: a -> Vector a -> Vector a -> IntSet -> [(a, Int, a)] -> (Vector a, IntSet)
+    go tj xj dj as bps =
+      case bps of
+        [] -> (xj `add` scale dt_opt dj, as)
+        (tj', i, val) : bps'
+          | tj + dt_opt < tj' -> (xj `add` scale dt_opt dj, as)
+          | otherwise -> go tj' (xj VG.// [(i, val)]) (dj VG.// [(i, 0)]) (IntSet.insert i as) bps'
+      where
+        z = xj `sub` x0
+        _a0 = f0 + (g <.> z) + (z <.> bMult z) / 2
+        a1 = g <.> dj + dj <.> bMult z
+        a2 = dj <.> bMult dj
+        dt_opt = - a1 / a2
+
+
+sub :: (Additive (c t), Linear t c, Num t) => c t -> c t -> c t
+sub x y = x `add` scale (-1) y
 
 
 -- example from https://en.wikipedia.org/wiki/Gauss%E2%80%93Newton_algorithm
