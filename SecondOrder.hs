@@ -232,7 +232,7 @@ bfgsV f x0 = go (ident n) alpha0 (x0, o0, g0)
         case err of
           Just e -> error (show e)
           Nothing
-            | sy > 0    -> go bInv' 1.0 (x', o', g')
+            | sy > 0    -> go (updateBFGSInv s y sy bInv) 1.0 (x', o', g')
             | otherwise -> error ("curvature condition failed: " ++ show sy)
       where
         converged :: Bool
@@ -249,11 +249,42 @@ bfgsV f x0 = go (ident n) alpha0 (x0, o0, g0)
         sy :: a
         sy = s <.> y
 
-        bInv' :: Matrix a
-        bInv' =
-            bInv
-            `add` scale ((sy + y <.> (bInv #> y)) / sy**2) (s `outer` s)
-            `add` scale (-1 / sy) (((bInv #> y) `outer` s) `add` (s `outer` (y <# bInv)))
+
+updateBFGSInv
+  :: forall a. (Field a, Ord a, Normed (Vector a), Show a)
+  => Vector a -> Vector a -> a -> Matrix a -> Matrix a
+updateBFGSInv s y sy bInv =
+  bInv
+  `add` scale ((sy + y <.> (bInv #> y)) / sy**2) (s `outer` s)
+  `add` scale (-1 / sy) (((bInv #> y) `outer` s) `add` (s `outer` (y <# bInv)))
+
+
+type LBFGSState a = (Int, Seq (Vector a, Vector a, a))
+
+
+updateLBFGSState
+  :: forall a. (Field a, Ord a, Normed (Vector a), Show a)
+  => Vector a -> Vector a -> a -> LBFGSState a -> LBFGSState a
+updateLBFGSState s y sy (m, hist) = (m, Seq.take m ((s,y,rho) <| hist))
+  where
+    rho = 1 / sy
+
+
+lbfgsMultiplyHessianInv
+  :: forall a. (Field a, Ord a, Normed (Vector a), Show a)
+  => LBFGSState a -> Vector a -> Vector a
+lbfgsMultiplyHessianInv (_m, hist) g = f (F.toList hist) g
+  where
+    f :: [(Vector a, Vector a, a)] -> Vector a -> Vector a
+    f ((s,y,rho) : xs) q = z `add` scale (alpha - beta) s
+      where
+        alpha = rho * (s <.> q)
+        z = f xs (q `add` scale (- alpha) y)
+        beta = rho * (y <.> z)
+    f [] q =
+      case Seq.viewl hist of
+        EmptyL -> q
+        (s, y, _rho) :< _ -> scale (s <.> y / y <.> y) q
 
 
 lbfgsV
@@ -261,7 +292,7 @@ lbfgsV
   => Int
   -> (Vector a -> (a, Vector a))
   -> Vector a -> [Vector a]
-lbfgsV m f x0 = go Seq.empty alpha0 (x0, o0, g0)
+lbfgsV m f x0 = go (m, Seq.empty) alpha0 (x0, o0, g0)
   where
     (o0, g0) = f x0
 
@@ -271,42 +302,30 @@ lbfgsV m f x0 = go Seq.empty alpha0 (x0, o0, g0)
     epsilon :: Double
     epsilon = 1e-5
 
-    go :: Seq (Vector a, Vector a, a) -> a -> (Vector a, a, Vector a) -> [Vector a]
-    go hist alpha_ (x, o, g) = x :
+    go :: LBFGSState a -> a -> (Vector a, a, Vector a) -> [Vector a]
+    go state alpha_ (x, o, g) = x :
       if converged then
         []
       else
         case err of
           Just e -> error (show e)
           Nothing
-            | sy > 0    -> go (Seq.take m ((s,y,rho) <| hist)) 1.0 (x', o', g')
+            | sy > 0    -> go (updateLBFGSState s y sy state) 1.0 (x', o', g')
             | otherwise -> error ("curvature condition failed: " ++ show sy)
       where
         converged :: Bool
         converged = norm_2 g / max (norm_2 x) 1 <= epsilon
 
         p :: Vector a
-        p = scale (-1) (f (F.toList hist) g)
-          where
-            f :: [(Vector a, Vector a, a)] -> Vector a -> Vector a
-            f ((s,y,rho) : xs) q = z `add` scale (alpha - beta) s
-              where
-                alpha = rho * (s <.> q)
-                z = f xs (q `add` scale (- alpha) y)
-                beta = rho * (y <.> z)
-            f [] q =
-              case Seq.viewl hist of
-                EmptyL -> q
-                (s, y, _rho) :< _ -> scale (s <.> y / y <.> y) q
+        p = scale (-1) (lbfgsMultiplyHessianInv state g)
 
         (err, alpha, (x', o', g')) = LS.lineSearch LS.defaultParams f (x, o, g) p alpha_
 
         s, y :: Vector a
         s = scale alpha p
         y = g' `add` scale (-1) g
-        sy, rho :: a
+        sy :: a
         sy = s <.> y
-        rho = 1 / sy
 
 
 -- | Compute generalized Cauchy point of a function f(x0) + g (x - x0) + (1/2) (x - x0)^T B (x - x0)
