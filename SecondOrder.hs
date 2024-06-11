@@ -270,32 +270,42 @@ updateBFGSHessianInv s y sy bInv =
   `add` scale (-1 / sy) (((bInv #> y) `outer` s) `add` (s `outer` (y <# bInv)))
 
 
-type LBFGSState a = (Int, Seq (Vector a, Vector a, a))
+type LBFGSState a = (Int, Int, Seq (Vector a, Vector a, a))
 
 
 updateLBFGSState
   :: forall a. (Field a, Ord a, Normed (Vector a), Show a)
   => Vector a -> Vector a -> a -> LBFGSState a -> LBFGSState a
-updateLBFGSState s y sy (m, hist) = (m, Seq.take m ((s,y,rho) <| hist))
-  where
-    rho = 1 / sy
+updateLBFGSState s y sy (n, m, hist) = (n, m, Seq.take m ((s,y,sy) <| hist))
 
 
 lbfgsMultiplyHessianInv
   :: forall a. (Field a, Ord a, Normed (Vector a), Show a)
   => LBFGSState a -> Vector a -> Vector a
-lbfgsMultiplyHessianInv (_m, hist) g = f (F.toList hist) g
+lbfgsMultiplyHessianInv (_n, _m, hist) g = f (F.toList hist) g
   where
     f :: [(Vector a, Vector a, a)] -> Vector a -> Vector a
-    f ((s,y,rho) : xs) q = z `add` scale (alpha - beta) s
+    f ((s,y,sy) : xs) q = z `add` scale (alpha - beta) s
       where
+        rho = 1 / sy
         alpha = rho * (s <.> q)
         z = f xs (q `add` scale (- alpha) y)
         beta = rho * (y <.> z)
     f [] q =
       case Seq.viewl hist of
         EmptyL -> q
-        (s, y, _rho) :< _ -> scale (s <.> y / y <.> y) q
+        (_s, y, sy) :< _ -> scale (sy / y <.> y) q
+
+
+lbfgsHessianInv
+  :: forall a. (Field a, Ord a, Normed (Vector a), Show a)
+  => LBFGSState a -> Matrix a
+lbfgsHessianInv (n, _m, hist) = F.foldr f h0 hist
+  where
+    h0 = case Seq.viewl hist of
+           EmptyL -> ident n
+           (_s, y, sy) :< _ -> scale (sy / y <.> y) (ident n)
+    f (s,y,sy) h = updateBFGSHessianInv s y sy h
 
 
 lbfgsV
@@ -303,8 +313,9 @@ lbfgsV
   => Int
   -> (Vector a -> (a, Vector a))
   -> Vector a -> [Vector a]
-lbfgsV m f x0 = go (m, Seq.empty) alpha0 (x0, o0, g0)
+lbfgsV m f x0 = go (n, m, Seq.empty) alpha0 (x0, o0, g0)
   where
+    n = VG.length x0
     (o0, g0) = f x0
 
     alpha0 :: a
