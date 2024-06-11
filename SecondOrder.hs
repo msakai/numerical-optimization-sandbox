@@ -232,7 +232,7 @@ bfgsV f x0 = go (ident n) alpha0 (x0, o0, g0)
         case err of
           Just e -> error (show e)
           Nothing
-            | sy > 0    -> go (updateBFGSInv s y sy bInv) 1.0 (x', o', g')
+            | sy > 0    -> go (updateBFGSHessianInv s y sy bInv) 1.0 (x', o', g')
             | otherwise -> error ("curvature condition failed: " ++ show sy)
       where
         converged :: Bool
@@ -250,10 +250,21 @@ bfgsV f x0 = go (ident n) alpha0 (x0, o0, g0)
         sy = s <.> y
 
 
-updateBFGSInv
+updateBFGSHessian
   :: forall a. (Field a, Ord a, Normed (Vector a), Show a)
   => Vector a -> Vector a -> a -> Matrix a -> Matrix a
-updateBFGSInv s y sy bInv =
+updateBFGSHessian s y sy b =
+  b
+  `add` scale (1 / sy) (y `outer` y)
+  `add` scale (-1 / (s <.> bs)) (bs `outer` bs)
+  where
+    bs = b #> s
+
+
+updateBFGSHessianInv
+  :: forall a. (Field a, Ord a, Normed (Vector a), Show a)
+  => Vector a -> Vector a -> a -> Matrix a -> Matrix a
+updateBFGSHessianInv s y sy bInv =
   bInv
   `add` scale ((sy + y <.> (bInv #> y)) / sy**2) (s `outer` s)
   `add` scale (-1 / sy) (((bInv #> y) `outer` s) `add` (s `outer` (y <# bInv)))
