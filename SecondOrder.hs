@@ -366,7 +366,7 @@ generalizedCauchyPoint
   -> Vector a -- ^ lower bounds
   -> Vector a -- ^ upper bounds
   -> (Vector a, IntSet) -- ^ generalized cauchy point and its active set
-generalizedCauchyPoint x0 f0 g bMult lb ub = go 0 x0 d0 IntSet.empty breakpoints
+generalizedCauchyPoint x0 f0 g multiplyB lb ub = go 0 x0 d0 IntSet.empty breakpoints
   where
     breakpoints :: [(a, Int, a)]
     breakpoints =
@@ -403,9 +403,9 @@ generalizedCauchyPoint x0 f0 g bMult lb ub = go 0 x0 d0 IntSet.empty breakpoints
           | otherwise -> go tj' (xj VG.// [(i, val)]) (dj VG.// [(i, 0)]) (IntSet.insert i as) bps'
       where
         z = xj `sub` x0
-        _a0 = f0 + (g <.> z) + (z <.> bMult z) / 2
-        a1 = g <.> dj + dj <.> bMult z
-        a2 = dj <.> bMult dj
+        _a0 = f0 + (g <.> z) + (z <.> multiplyB z) / 2
+        a1 = g <.> dj + dj <.> multiplyB z
+        a2 = dj <.> multiplyB dj
         dt_opt = - a1 / a2
 
 
