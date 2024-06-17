@@ -279,16 +279,22 @@ updateLBFGSState
 updateLBFGSState s y sy (n, m, hist) = (n, m, Seq.take m ((s,y,sy) <| hist))
 
 
+lbfgsTheta
+  :: forall a. (Field a, Ord a, Normed (Vector a), Show a)
+  => LBFGSState a -> a
+lbfgsTheta (_n, _m, hist) =
+  case Seq.viewl hist of
+    EmptyL -> 1
+    (_s, y, sy) :< _ -> y <.> y / sy
+
+
 lbfgsMultiplyHessianInv
   :: forall a. (Field a, Ord a, Normed (Vector a), Show a)
   => LBFGSState a -> Vector a -> Vector a
-lbfgsMultiplyHessianInv (_n, _m, hist) g = f (F.toList hist) g
+lbfgsMultiplyHessianInv state@(_n, _m, hist) g = f (F.toList hist) g
   where
     theta :: a
-    theta =
-      case Seq.viewl hist of
-        EmptyL -> 1
-        (_s, y, sy) :< _ -> y <.> y / sy
+    theta = lbfgsTheta state
 
     f :: [(Vector a, Vector a, a)] -> Vector a -> Vector a
     f ((s,y,sy) : xs) q = z `add` scale (alpha - beta) s
@@ -303,13 +309,11 @@ lbfgsMultiplyHessianInv (_n, _m, hist) g = f (F.toList hist) g
 lbfgsHessianInv
   :: forall a. (Field a, Ord a, Normed (Vector a), Show a)
   => LBFGSState a -> Matrix a
-lbfgsHessianInv (n, _m, hist) = F.foldr f h0 hist
+lbfgsHessianInv state@(n, _m, hist) = F.foldr f h0 hist
   where
     theta :: a
-    theta =
-      case Seq.viewl hist of
-        EmptyL -> 1
-        (_s, y, sy) :< _ -> y <.> y / sy
+    theta = lbfgsTheta state
+
     h0 = scale (1 / theta) (ident n)
     f (s,y,sy) h = updateBFGSHessianInv s y sy h
 
