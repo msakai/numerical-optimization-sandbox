@@ -333,7 +333,7 @@ lbfgsHessian' state@(n, _m, hist)
       assert (LA.size matL == (m,m)) $
       assert (LA.size matD == (m,m)) $
       assert (LA.size matM == (2*m,2*m)) $
-      scale theta (ident n) `sub` (matW LA.<> matM LA.<> tr matW)
+        scale theta (ident n) `sub` (matW LA.<> matM LA.<> tr matW)
   where
     theta :: a
     theta = lbfgsTheta state
