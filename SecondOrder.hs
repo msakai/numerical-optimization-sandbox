@@ -358,6 +358,43 @@ lbfgsHessian' state@(n, _m, hist)
 
 
 -- http://users.iems.northwestern.edu/~nocedal/PDFfiles/limited.pdf
+lbfgsMultiplyHessian'
+  :: forall a. (Field a, Ord a, Normed (Vector a), Show a)
+  => LBFGSState a -> Vector a -> Vector a
+lbfgsMultiplyHessian' state@(n, _m, hist) x
+  | Seq.null hist = scale theta x
+  | otherwise =
+      assert (LA.size matY == (n,m)) $
+      assert (LA.size matS == (n,m)) $
+      assert (LA.size matW == (n,2*m)) $
+      assert (LA.size matL == (m,m)) $
+      assert (LA.size matD == (m,m)) $
+      assert (LA.size matM == (2*m,2*m)) $
+        scale theta x `sub` (matW #> matM #> tr matW #> x)
+  where
+    theta :: a
+    theta = lbfgsTheta state
+
+    m :: Int
+    m = Seq.length hist
+
+    matY, matS, matW, matL, matD, matM :: Matrix a
+    matY = fromColumns [y | (_s,y,_sy) <- F.toList hist]
+    matS = fromColumns [s | (s,_y,_sy) <- F.toList hist]
+    matW = matY ||| scale theta matS
+    matL = (m >< m)
+         [ if i > j then s `dot` y else 0
+         | (i, (s, _y, _sy)) <- zip [m-1,m-2..] (F.toList hist)
+         , (j, (_s, y, _sy)) <- zip [m-1,m-2..] (F.toList hist)
+         ]
+    matD = diag $ LA.fromList [sy | (_s, _y, sy) <- F.toList hist]
+    matM = inv $ fromBlocks
+           [ [scale (-1) matD, tr matL]
+           , [matL, scale theta (tr matS LA.<> matS)]
+           ]
+
+
+-- http://users.iems.northwestern.edu/~nocedal/PDFfiles/limited.pdf
 lbfgsHessianInv'
   :: forall a. (Field a, Ord a, Normed (Vector a), Show a)
   => LBFGSState a -> Matrix a
@@ -393,6 +430,49 @@ lbfgsHessianInv' state@(n, _m, hist)
            [ [konst 0 (m,m), scale (-1) matRInv]
            , [scale (-1) (tr matRInv), tr matRInv LA.<> (matD `add` scale (1 / theta) (tr matY LA.<> matY)) LA.<> matRInv]
            ]
+
+
+-- http://users.iems.northwestern.edu/~nocedal/PDFfiles/limited.pdf
+lbfgsMultiplyHessianInv'
+  :: forall a. (Field a, Ord a, Normed (Vector a), Show a)
+  => LBFGSState a -> Vector a -> Vector a
+lbfgsMultiplyHessianInv' state@(n, _m, hist) g
+  | Seq.null hist = scale (1 / theta) g
+  | otherwise =
+      assert (LA.size matY == (n,m)) $
+      assert (LA.size matS == (n,m)) $
+      assert (LA.size matR == (m,m)) $
+      assert (LA.size vecD == m) $
+        scale (1 / theta) g `add` vecWMWtg
+  where
+    theta :: a
+    theta = lbfgsTheta state
+
+    m :: Int
+    m = Seq.length hist
+
+    vecYtg = scale (1 / theta) (tr matY #> g)
+    vecStg = tr matS #> g
+    vecRInvStg = matRInv #> vecStg
+    vecMWtg1 = scale (-1) vecRInvStg
+    vecMWtg2 = scale (-1) (tr matRInv #> vecYtg)
+               `add`
+               (tr matRInv #> ((vecD `mul` vecRInvStg) `add` scale (1 / theta) (tr matY #> matY #> vecRInvStg)))
+    vecWMWtg = scale (1 / theta) (matY #> vecMWtg1) `add` (matS #> vecMWtg2)
+
+    mul = VG.zipWith (*)
+
+    matY, matS, matR, matRInv :: Matrix a
+    matY = fromColumns [y | (_s,y,_sy) <- F.toList hist]
+    matS = fromColumns [s | (s,_y,_sy) <- F.toList hist]
+    matR = (m >< m)
+         [ if i <= j then s `dot` y else 0
+         | (i, (s, _y, _sy)) <- zip [m-1,m-2..] (F.toList hist)
+         , (j, (_s, y, _sy)) <- zip [m-1,m-2..] (F.toList hist)
+         ]
+    matRInv = inv matR
+    vecD :: Vector a
+    vecD = LA.fromList [sy | (_s, _y, sy) <- F.toList hist]
 
 
 lbfgsV
