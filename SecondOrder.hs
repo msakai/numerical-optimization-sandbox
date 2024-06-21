@@ -369,8 +369,8 @@ lbfgsMultiplyHessian' state@(n, _m, hist) x
       assert (LA.size matW == (n,2*m)) $
       assert (LA.size matL == (m,m)) $
       assert (LA.size matD == (m,m)) $
-      assert (LA.size matM == (2*m,2*m)) $
-        scale theta x `sub` (matW #> matM #> tr matW #> x)
+      assert (LA.size matMInv == (2*m,2*m)) $
+        scale theta x `sub` (matW #> (matMInv <\> (tr matW #> x)))
   where
     theta :: a
     theta = lbfgsTheta state
@@ -378,7 +378,7 @@ lbfgsMultiplyHessian' state@(n, _m, hist) x
     m :: Int
     m = Seq.length hist
 
-    matY, matS, matW, matL, matD, matM :: Matrix a
+    matY, matS, matW, matL, matD, matMInv :: Matrix a
     matY = fromColumns [y | (_s,y,_sy) <- F.toList hist]
     matS = fromColumns [s | (s,_y,_sy) <- F.toList hist]
     matW = matY ||| scale theta matS
@@ -388,10 +388,11 @@ lbfgsMultiplyHessian' state@(n, _m, hist) x
          , (j, (_s, y, _sy)) <- zip [m-1,m-2..] (F.toList hist)
          ]
     matD = diag $ LA.fromList [sy | (_s, _y, sy) <- F.toList hist]
-    matM = inv $ fromBlocks
-           [ [scale (-1) matD, tr matL]
-           , [matL, scale theta (tr matS LA.<> matS)]
-           ]
+    matMInv =
+      fromBlocks
+      [ [scale (-1) matD, tr matL]
+      , [matL, scale theta (tr matS LA.<> matS)]
+      ]
 
 
 -- http://users.iems.northwestern.edu/~nocedal/PDFfiles/limited.pdf
