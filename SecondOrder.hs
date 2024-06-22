@@ -415,7 +415,7 @@ lbfgsHessian' (n, _m, _hist) (_m2, theta, matW, matM) =
 lbfgsMultiplyHessian'
   :: forall a. (Field a, Ord a, Normed (Vector a), Show a)
   => LBFGSState a -> LBFGSHessianInfo a -> Vector a -> Vector a
-lbfgsMultiplyHessian' (n, _m, hist) (_m2, theta, matW, matM) x =
+lbfgsMultiplyHessian' (n, _m, _hist) (_m2, theta, matW, matM) x =
   assert (LA.size x == n) $
     scale theta x `sub` (matW #> matM #> tr matW #> x)
 
