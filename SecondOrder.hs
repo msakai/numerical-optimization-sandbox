@@ -724,6 +724,39 @@ test_LBFGS = lbfgs 10 f x0
     x0 = [0.9, 0.2]
 
 
+test_LBFGSB = lbfgsb 10 f lb ub x0
+  where
+    f :: (Fractional a, Floating a) => [a] -> a
+    f [beta1,beta2] = sum [(y - beta1*x / (beta2 + x))**2 | (x,y) <- zip xs ys]
+      where
+        xs = [0.038, 0.194, 0.425, 0.626, 1.253, 2.500, 3.740]
+        ys = [0.050, 0.127, 0.094, 0.2122, 0.2729, 0.2665, 0.3317]
+
+    x0 :: [Double]
+    x0 = [0.9, 0.2]
+
+    lb, ub :: [Double]
+    lb = replicate 2 (-1/0)
+    ub = replicate 2 (1/0)
+
+
+test_LBFGSB_2 = lbfgsb 10 f lb ub x0
+  where
+    f :: (Fractional a, Floating a) => [a] -> a
+    f [beta1,beta2] = sum [(y - beta1*x / (beta2 + x))**2 | (x,y) <- zip xs ys]
+      where
+        xs = [0.038, 0.194, 0.425, 0.626, 1.253, 2.500, 3.740]
+        ys = [0.050, 0.127, 0.094, 0.2122, 0.2729, 0.2665, 0.3317]
+
+    x0 :: [Double]
+    x0 = [0.9, 0.2]
+
+    lb, ub :: [Double]
+    lb = [0.5, 0.2]
+    ub = [1.0, 0.5]
+
+
+
 rosenbrock [x,y] = sq (1 - x) + 100 * sq (y - sq x)
   where
     -- Note that 'sq x = x * x' did not work with Kahn mode.
