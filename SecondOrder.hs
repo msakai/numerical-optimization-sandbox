@@ -652,6 +652,7 @@ lbfgsbV m f lb ub x0 =
     pgtol :: Double
     pgtol = 1e-5
 
+    eps :: a
     eps = 2.2 * 1e-16
 
     go :: LBFGSState a -> a -> (Vector a, a, Vector a) -> [Vector a]
