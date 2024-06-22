@@ -660,8 +660,8 @@ lbfgsbV m f lb ub x0 =
         []
       else
         case err of
-          Just e -> error (show e)
-          Nothing
+          Just e | e /= LS.ERR_MAXIMUMSTEP -> error (show e)
+          _
             | sy > eps * (y <.> y) -> go (updateLBFGSState s y sy state) 1.0 (x', o', g')
             | otherwise -> go state 1.0 (x', o', g')
       where
