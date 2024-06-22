@@ -408,15 +408,16 @@ mkLBFGSHessianInfo state@(n, _m, hist) =
 lbfgsHessian'
   :: forall a. (Field a, Ord a, Normed (Vector a), Show a)
   => LBFGSState a -> LBFGSHessianInfo a -> Matrix a
-lbfgsHessian' state@(n, _m, _hist) (_m2, theta, matW, matM) =
-    scale theta (ident n) `sub` (matW <> matM <> tr matW)
+lbfgsHessian' (n, _m, _hist) (_m2, theta, matW, matM) =
+  scale theta (ident n) `sub` (matW <> matM <> tr matW)
 
 
 lbfgsMultiplyHessian'
   :: forall a. (Field a, Ord a, Normed (Vector a), Show a)
   => LBFGSState a -> LBFGSHessianInfo a -> Vector a -> Vector a
-lbfgsMultiplyHessian' state@(n, _m, hist) (_m2, theta, matW, matM) x =
-  scale theta x `sub` (matW #> matM #> tr matW #> x)
+lbfgsMultiplyHessian' (n, _m, hist) (_m2, theta, matW, matM) x =
+  assert (LA.size x == n) $
+    scale theta x `sub` (matW #> matM #> tr matW #> x)
 
 
 
@@ -469,7 +470,8 @@ lbfgsMultiplyHessianInv'
   :: forall a. (Field a, Ord a, Normed (Vector a), Show a)
   => LBFGSState a -> LBFGSHessianInvInfo a -> Vector a -> Vector a
 lbfgsMultiplyHessianInv' (n, _m, _hist) (_m2, theta, matW, matM) x =
-  scale (1 / theta) x `add` (matW #> matM #> tr matW #> x)
+  assert (LA.size x == n) $
+    scale (1 / theta) x `add` (matW #> matM #> tr matW #> x)
 
 
 -- | Compute generalized Cauchy point of a function f(x0) + g (x - x0) + (1/2) (x - x0)^T B (x - x0)
@@ -482,8 +484,14 @@ generalizedCauchyPoint
   -> Vector a -- ^ lower bounds
   -> Vector a -- ^ upper bounds
   -> (Vector a, IntSet) -- ^ generalized cauchy point and its active set
-generalizedCauchyPoint x0 f0 g multiplyB lb ub = go 0 x0 d0 IntSet.empty breakpoints
+generalizedCauchyPoint x0 f0 g multiplyB lb ub =
+  assert (LA.size g == n) $
+  assert (LA.size lb == n) $
+  assert (LA.size ub == n) $
+    go 0 x0 d0 IntSet.empty breakpoints
   where
+    n = VG.length x0
+
     breakpoints :: [(a, Int, a)]
     breakpoints =
       sortBy (comparing (\(ti, _xi, _i) -> ti)) $
