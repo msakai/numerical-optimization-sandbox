@@ -5,6 +5,7 @@
 module LineSearch
   ( Params (..)
   , defaultParams
+  , Error (..)
   , lineSearch
   , lineSearchMoreThuente
   ) where
