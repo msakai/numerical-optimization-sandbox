@@ -567,7 +567,7 @@ generalizedCauchyPoint x0 f0 g multiplyB lb ub = go 0 x0 d0 IntSet.empty breakpo
           | otherwise -> go tj' (xj VG.// [(i, val)]) (dj VG.// [(i, 0)]) (IntSet.insert i as) bps'
       where
         z = xj `sub` x0
-        _a0 = f0 + (g <.> z) + (z <.> multiplyB z) / 2
+        _a0 = f0 + g <.> z + z <.> multiplyB z / 2
         a1 = g <.> dj + dj <.> multiplyB z
         a2 = dj <.> multiplyB dj
         dt_opt = - a1 / a2
