@@ -14,6 +14,8 @@ module SecondOrder
   , rosenbrock
   ) where
 
+import Prelude hiding ((<>))
+
 import Control.Exception (assert)
 import qualified Data.Foldable as F
 import Data.IntSet (IntSet)
@@ -333,7 +335,7 @@ lbfgsHessian' state@(n, _m, hist)
       assert (LA.size matL == (m,m)) $
       assert (LA.size matD == (m,m)) $
       assert (LA.size matM == (2*m,2*m)) $
-        scale theta (ident n) `sub` (matW LA.<> matM LA.<> tr matW)
+        scale theta (ident n) `sub` (matW <> matM <> tr matW)
   where
     theta :: a
     theta = lbfgsTheta state
@@ -353,7 +355,7 @@ lbfgsHessian' state@(n, _m, hist)
     matD = diag $ LA.fromList [sy | (_s, _y, sy) <- F.toList hist]
     matM = inv $ fromBlocks
            [ [scale (-1) matD, tr matL]
-           , [matL, scale theta (tr matS LA.<> matS)]
+           , [matL, scale theta (tr matS <> matS)]
            ]
 
 
@@ -391,7 +393,7 @@ lbfgsMultiplyHessian' state@(n, _m, hist) x
     matMInv =
       fromBlocks
       [ [scale (-1) matD, tr matL]
-      , [matL, scale theta (tr matS LA.<> matS)]
+      , [matL, scale theta (tr matS <> matS)]
       ]
 
 
@@ -408,7 +410,7 @@ lbfgsHessianInv' state@(n, _m, hist)
       assert (LA.size matR == (m,m)) $
       assert (LA.size matD == (m,m)) $
       assert (LA.size matM == (2*m,2*m)) $
-        scale (1 / theta) (ident n) `add` (matW LA.<> matM LA.<> tr matW)
+        scale (1 / theta) (ident n) `add` (matW <> matM <> tr matW)
   where
     theta :: a
     theta = lbfgsTheta state
@@ -429,7 +431,7 @@ lbfgsHessianInv' state@(n, _m, hist)
     matD = diag $ LA.fromList [sy | (_s, _y, sy) <- F.toList hist]
     matM = fromBlocks $
            [ [konst 0 (m,m), scale (-1) matRInv]
-           , [scale (-1) (tr matRInv), tr matRInv LA.<> (matD `add` scale (1 / theta) (tr matY LA.<> matY)) LA.<> matRInv]
+           , [scale (-1) (tr matRInv), tr matRInv <> (matD `add` scale (1 / theta) (tr matY <> matY)) <> matRInv]
            ]
 
 
