@@ -10,6 +10,8 @@ module SecondOrder
   , bfgsV
   , lbfgs
   , lbfgsV
+  , lbfgsb
+  , lbfgsbV
 
   , rosenbrock
   ) where
@@ -531,6 +533,145 @@ generalizedCauchyPoint x0 f0 g multiplyB lb ub =
         a1 = g <.> dj + dj <.> multiplyB z
         a2 = dj <.> multiplyB dj
         dt_opt = - a1 / a2
+
+
+lbfgsbOptimizeSubspace
+  :: forall a. (Field a, Ord a, Normed (Vector a), Show a)
+  => Vector a -- ^ x0
+  -> Vector a -- ^ g
+  -> Vector a -- ^ lower bounds
+  -> Vector a -- ^ upper bounds
+  -> LBFGSState a
+  -> LBFGSHessianInfo a
+  -> Vector a -- ^ generalized cauchy point x^c
+  -> IntSet   -- ^ active set
+  -> Vector a
+lbfgsbOptimizeSubspace x0 g lb ub state info@(m, theta, matW, matM) xc as =
+  assert (LA.size g == n) $
+  assert (LA.size lb == n) $
+  assert (LA.size ub == n) $
+  assert (LA.size matW == (n, 2*m)) $
+  assert (LA.size matM == (2*m,2*m)) $
+  assert (LA.size xc == n) $
+  assert (LA.size matZ == (n, t)) $
+  assert (LA.size rc == t) $
+  assert (LA.size du == t) $
+  assert (LA.size du' == t) $
+  assert (LA.size x_opt == n) $
+    x_opt
+  where
+    n = VG.length x0
+    t = n - IntSet.size as
+    fs = VG.fromListN t [i | i <- [0..n-1], i `IntSet.notMember` as]
+    matZ = ident n ¿ VG.toList fs
+
+    multiplyZ :: Vector a -> Vector a
+    multiplyZ v = VG.replicate n 0 VG.// zip (VG.toList fs) (VG.toList v)
+
+    multiplyTrZ :: Vector a -> Vector a
+    multiplyTrZ v = VG.backpermute v fs
+
+    multiplyB :: Vector a -> Vector a
+    multiplyB = lbfgsMultiplyHessian' state info
+
+    -- reduced gradient
+    rc = multiplyTrZ (g `add` multiplyB (xc `sub` x0))
+
+    multiplyReducedHessianInv :: Vector a -> Vector a
+    multiplyReducedHessianInv v =
+      assert (LA.size v == t) $
+      assert (LA.size matN == (2*m, 2*m)) $
+      assert (LA.size v1 == 2*m) $
+      assert (LA.size v2 == t) $
+        v2
+      where
+        matN = ident (2*m) `sub` scale (1 / theta) (matM <> tr matW <> matZ <> tr matZ <> matW)
+        v1 = matN <\> matM #> tr matW #> multiplyZ v
+        v2 = scale (1 / theta) v `add` scale (1 / theta^(2::Int)) (multiplyTrZ (matW #> v1))
+
+    du = scale (-1) $ multiplyReducedHessianInv rc
+
+    alpha = minimum $ 1 : concat
+              [ [(ub VG.! i - xc VG.! i) / du VG.! i | du VG.! i > 0] ++
+                [(lb VG.! i - xc VG.! i) / du VG.! i | du VG.! i < 0]
+              | i <- VG.toList fs
+              ]
+    du' = scale alpha du
+    x_opt = VG.accum (+) xc (zip (VG.toList fs) (VG.toList du'))
+
+
+lbfgsb
+  :: forall f a. (Traversable f, Field a, Ord a, Normed (Vector a), Show a)
+  => Int
+  -> (forall s. Reifies s Tape => f (Reverse s a) -> Reverse s a)
+  -> f a
+  -> f a
+  -> f a
+  -> [f a]
+lbfgsb m f lb ub x0 = map fromVector $ lbfgsbV m evaluate (toVector lb) (toVector ub) (toVector x0)
+  where
+    fromVector :: Vector a -> f a
+    fromVector = zipWithTV (\_ x -> x) x0
+
+    toVector :: f a -> Vector a
+    toVector = fromList . F.toList
+
+    evaluate :: Vector a -> (a, Vector a)
+    evaluate x =
+      case grad' f (fromVector x) of
+        (obj, g) -> (obj, toVector g)
+
+
+lbfgsbV
+  :: forall a. (Field a, Ord a, Normed (Vector a), Show a)
+  => Int
+  -> (Vector a -> (a, Vector a))
+  -> Vector a
+  -> Vector a
+  -> Vector a
+  -> [Vector a]
+lbfgsbV m f lb ub x0 = go (n, m, Seq.empty) alpha0 (x0, o0, g0)
+  where
+    n = VG.length x0
+    (o0, g0) = f x0
+
+    alpha0 :: a
+    alpha0 = realToFrac $ 1 / norm_2 g0
+
+    pgtol :: Double
+    pgtol = 1e-5
+
+    eps = 2.2 * 1e-16
+
+    go :: LBFGSState a -> a -> (Vector a, a, Vector a) -> [Vector a]
+    go state alpha_ (x, o, g) = x :
+      if converged then
+        []
+      else
+        case err of
+          Just e -> error (show e)
+          Nothing
+            | sy > eps * (y <.> y) -> go (updateLBFGSState s y sy state) 1.0 (x', o', g')
+            | otherwise -> go state 1.0 (x', o', g')
+      where
+        pg = VG.zipWith3 (\l u x -> clamp (l,u) x) lb ub (x `sub` g) `sub` x
+
+        converged :: Bool
+        converged = norm_Inf pg < pgtol
+
+        info = mkLBFGSHessianInfo state
+        multiplyB = lbfgsMultiplyHessian' state info
+        (xc, as) = generalizedCauchyPoint x o g multiplyB lb ub
+        x_opt = lbfgsbOptimizeSubspace x g lb ub state info xc as
+        d = x_opt `sub` x
+
+        (err, alpha, (x', o', g')) = LS.lineSearch LS.defaultParams{ LS.paramsMaxStep = 1.0 } f (x, o, g) d alpha_
+
+        s, y :: Vector a
+        s = scale alpha d
+        y = g' `add` scale (-1) g
+        sy :: a
+        sy = s <.> y
 
 
 -- ------------------------------------------------------------------------
