@@ -523,7 +523,9 @@ generalizedCauchyPoint x0 f0 g multiplyB lb ub =
     go :: a -> Vector a -> Vector a -> IntSet -> [(a, Int, a)] -> (Vector a, IntSet)
     go tj xj dj as bps =
       case bps of
-        [] -> (xj `add` scale dt_opt dj, as)
+        []
+          | IntSet.size as == n -> (xj, as)
+          | otherwise -> (xj `add` scale dt_opt dj, as)
         (tj', i, val) : bps'
           | tj + dt_opt < tj' -> (xj `add` scale dt_opt dj, as)
           | otherwise -> go tj' (xj VG.// [(i, val)]) (dj VG.// [(i, 0)]) (IntSet.insert i as) bps'
@@ -598,9 +600,9 @@ lbfgsbOptimizeSubspace x0 g lb ub state info@(m, theta, matW, matM) xc as =
     du = scale (-1) $ multiplyReducedHessianInv rc
 
     alpha = minimum $ 1 : concat
-              [ [(ub VG.! i - xc VG.! i) / du VG.! i | du VG.! i > 0] ++
-                [(lb VG.! i - xc VG.! i) / du VG.! i | du VG.! i < 0]
-              | i <- VG.toList fs
+              [ [(ub VG.! i - xc VG.! i) / d | d > 0] ++
+                [(lb VG.! i - xc VG.! i) / d | d < 0]
+              | (d, i) <- zip (VG.toList du) (VG.toList fs)
               ]
     du' = scale alpha du
     x_opt = VG.accum (+) xc (zip (VG.toList fs) (VG.toList du'))
