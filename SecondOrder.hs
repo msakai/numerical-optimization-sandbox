@@ -142,8 +142,8 @@ levenbergMarquardt lambda0 f x0 = go lambda0 x0
         approx :: Vector a -> a
         approx delta
           = loss
-          + (scale (2 / fromIntegral n) r <# j) `dot` delta
-          + (delta `dot` (scale (2 / fromIntegral n) gnMat #> delta)) / 2
+          + (scale (2 / fromIntegral n) r <# j) <.> delta
+          + delta <.> scale (2 / fromIntegral n) gnMat #> delta / 2
 
         rho :: a
         rho = (loss' - loss) / (approx delta - approx (VG.replicate m 0))
@@ -268,7 +268,7 @@ updateBFGSHessianInv
   => Vector a -> Vector a -> a -> Matrix a -> Matrix a
 updateBFGSHessianInv s y sy bInv =
   bInv
-  `add` scale ((sy + y <.> (bInv #> y)) / sy**2) (s `outer` s)
+  `add` scale ((sy + y <.> bInv #> y) / sy**2) (s `outer` s)
   `add` scale (-1 / sy) (((bInv #> y) `outer` s) `add` (s `outer` (y <# bInv)))
 
 
@@ -346,7 +346,7 @@ lbfgsHessian' state@(n, _m, hist)
     matS = fromColumns [s | (s,_y,_sy) <- F.toList hist]
     matW = matY ||| scale theta matS
     matL = (m >< m)
-         [ if i > j then s `dot` y else 0
+         [ if i > j then s <.> y else 0
          | (i, (s, _y, _sy)) <- zip [m-1,m-2..] (F.toList hist)
          , (j, (_s, y, _sy)) <- zip [m-1,m-2..] (F.toList hist)
          ]
@@ -370,7 +370,7 @@ lbfgsMultiplyHessian' state@(n, _m, hist) x
       assert (LA.size matL == (m,m)) $
       assert (LA.size matD == (m,m)) $
       assert (LA.size matMInv == (2*m,2*m)) $
-        scale theta x `sub` (matW #> (matMInv <\> (tr matW #> x)))
+        scale theta x `sub` (matW #> (matMInv <\> tr matW #> x))
   where
     theta :: a
     theta = lbfgsTheta state
@@ -383,7 +383,7 @@ lbfgsMultiplyHessian' state@(n, _m, hist) x
     matS = fromColumns [s | (s,_y,_sy) <- F.toList hist]
     matW = matY ||| scale theta matS
     matL = (m >< m)
-         [ if i > j then s `dot` y else 0
+         [ if i > j then s <.> y else 0
          | (i, (s, _y, _sy)) <- zip [m-1,m-2..] (F.toList hist)
          , (j, (_s, y, _sy)) <- zip [m-1,m-2..] (F.toList hist)
          ]
@@ -421,7 +421,7 @@ lbfgsHessianInv' state@(n, _m, hist)
     matS = fromColumns [s | (s,_y,_sy) <- F.toList hist]
     matW = scale (1 / theta) matY ||| matS
     matR = (m >< m)
-         [ if i <= j then s `dot` y else 0
+         [ if i <= j then s <.> y else 0
          | (i, (s, _y, _sy)) <- zip [m-1,m-2..] (F.toList hist)
          , (j, (_s, y, _sy)) <- zip [m-1,m-2..] (F.toList hist)
          ]
@@ -467,7 +467,7 @@ lbfgsMultiplyHessianInv' state@(n, _m, hist) g
     matY = fromColumns [y | (_s,y,_sy) <- F.toList hist]
     matS = fromColumns [s | (s,_y,_sy) <- F.toList hist]
     matR = (m >< m)
-         [ if i <= j then s `dot` y else 0
+         [ if i <= j then s <.> y else 0
          | (i, (s, _y, _sy)) <- zip [m-1,m-2..] (F.toList hist)
          , (j, (_s, y, _sy)) <- zip [m-1,m-2..] (F.toList hist)
          ]
