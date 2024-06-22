@@ -322,6 +322,48 @@ lbfgsHessianInv state@(n, _m, hist) = F.foldr f h0 hist
     f (s,y,sy) h = updateBFGSHessianInv s y sy h
 
 
+lbfgsV
+  :: forall a. (Field a, Ord a, Normed (Vector a), Show a)
+  => Int
+  -> (Vector a -> (a, Vector a))
+  -> Vector a -> [Vector a]
+lbfgsV m f x0 = go (n, m, Seq.empty) alpha0 (x0, o0, g0)
+  where
+    n = VG.length x0
+    (o0, g0) = f x0
+
+    alpha0 :: a
+    alpha0 = realToFrac $ 1 / norm_2 g0
+
+    epsilon :: Double
+    epsilon = 1e-5
+
+    go :: LBFGSState a -> a -> (Vector a, a, Vector a) -> [Vector a]
+    go state alpha_ (x, o, g) = x :
+      if converged then
+        []
+      else
+        case err of
+          Just e -> error (show e)
+          Nothing
+            | sy > 0    -> go (updateLBFGSState s y sy state) 1.0 (x', o', g')
+            | otherwise -> error ("curvature condition failed: " ++ show sy)
+      where
+        converged :: Bool
+        converged = norm_2 g / max (norm_2 x) 1 <= epsilon
+
+        p :: Vector a
+        p = scale (-1) (lbfgsMultiplyHessianInv state g)
+
+        (err, alpha, (x', o', g')) = LS.lineSearch LS.defaultParams f (x, o, g) p alpha_
+
+        s, y :: Vector a
+        s = scale alpha p
+        y = g' `add` scale (-1) g
+        sy :: a
+        sy = s <.> y
+
+
 -- ------------------------------------------------------------------------
 -- http://users.iems.northwestern.edu/~nocedal/PDFfiles/limited.pdf
 
@@ -430,51 +472,6 @@ lbfgsMultiplyHessianInv' (n, _m, _hist) (_m2, theta, matW, matM) x =
   scale (1 / theta) x `add` (matW #> matM #> tr matW #> x)
 
 
--- ------------------------------------------------------------------------
-
-
-lbfgsV
-  :: forall a. (Field a, Ord a, Normed (Vector a), Show a)
-  => Int
-  -> (Vector a -> (a, Vector a))
-  -> Vector a -> [Vector a]
-lbfgsV m f x0 = go (n, m, Seq.empty) alpha0 (x0, o0, g0)
-  where
-    n = VG.length x0
-    (o0, g0) = f x0
-
-    alpha0 :: a
-    alpha0 = realToFrac $ 1 / norm_2 g0
-
-    epsilon :: Double
-    epsilon = 1e-5
-
-    go :: LBFGSState a -> a -> (Vector a, a, Vector a) -> [Vector a]
-    go state alpha_ (x, o, g) = x :
-      if converged then
-        []
-      else
-        case err of
-          Just e -> error (show e)
-          Nothing
-            | sy > 0    -> go (updateLBFGSState s y sy state) 1.0 (x', o', g')
-            | otherwise -> error ("curvature condition failed: " ++ show sy)
-      where
-        converged :: Bool
-        converged = norm_2 g / max (norm_2 x) 1 <= epsilon
-
-        p :: Vector a
-        p = scale (-1) (lbfgsMultiplyHessianInv state g)
-
-        (err, alpha, (x', o', g')) = LS.lineSearch LS.defaultParams f (x, o, g) p alpha_
-
-        s, y :: Vector a
-        s = scale alpha p
-        y = g' `add` scale (-1) g
-        sy :: a
-        sy = s <.> y
-
-
 -- | Compute generalized Cauchy point of a function f(x0) + g (x - x0) + (1/2) (x - x0)^T B (x - x0)
 generalizedCauchyPoint
   :: forall a. (Field a, Ord a, Normed (Vector a), Show a)
@@ -528,8 +525,14 @@ generalizedCauchyPoint x0 f0 g multiplyB lb ub = go 0 x0 d0 IntSet.empty breakpo
         dt_opt = - a1 / a2
 
 
+-- ------------------------------------------------------------------------
+
+
 sub :: (Additive (c t), Linear t c, Num t) => c t -> c t -> c t
 sub x y = x `add` scale (-1) y
+
+
+-- ------------------------------------------------------------------------
 
 
 -- example from https://en.wikipedia.org/wiki/Gauss%E2%80%93Newton_algorithm
