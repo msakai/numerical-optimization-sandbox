@@ -547,6 +547,8 @@ lbfgsbOptimizeSubspace
   -> IntSet   -- ^ active set
   -> Vector a
 lbfgsbOptimizeSubspace x0 g lb ub state info@(m, theta, matW, matM) xc as =
+  assert (VG.and $ VG.zipWith (<=) lb x0) $
+  assert (VG.and $ VG.zipWith (<=) x0 ub) $
   assert (LA.size g == n) $
   assert (LA.size lb == n) $
   assert (LA.size ub == n) $
@@ -556,8 +558,12 @@ lbfgsbOptimizeSubspace x0 g lb ub state info@(m, theta, matW, matM) xc as =
   assert (LA.size matZ == (n, t)) $
   assert (LA.size rc == t) $
   assert (LA.size du == t) $
+  assert (0 <= alpha && alpha <= 1) $
   assert (LA.size du' == t) $
   assert (LA.size x_opt == n) $
+  assert (VG.and $ VG.zipWith (<=) lb x_opt) $
+  assert (VG.and $ VG.zipWith (<=) x_opt ub) $
+  assert (and [xc VG.! i == x_opt VG.! i | i <- IntSet.toList as]) $
     x_opt
   where
     n = VG.length x0
@@ -630,7 +636,10 @@ lbfgsbV
   -> Vector a
   -> Vector a
   -> [Vector a]
-lbfgsbV m f lb ub x0 = go (n, m, Seq.empty) alpha0 (x0, o0, g0)
+lbfgsbV m f lb ub x0 =
+  assert (VG.and $ VG.zipWith (<=) lb x0) $
+  assert (VG.and $ VG.zipWith (<=) x0 ub) $
+    go (n, m, Seq.empty) alpha0 (x0, o0, g0)
   where
     n = VG.length x0
     (o0, g0) = f x0
