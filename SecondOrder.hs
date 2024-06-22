@@ -399,7 +399,7 @@ mkLBFGSHessianInfo state@(n, _m, hist) =
          , (j, (_s, y, _sy)) <- zip [m-1,m-2..] (F.toList hist)
          ]
     matD = diag $ LA.fromList [sy | (_s, _y, sy) <- F.toList hist]
-    matM = inv $ fromBlocks
+    matM = inv' $ fromBlocks
            [ [scale (-1) matD, tr matL]
            , [matL, scale theta (tr matS <> matS)]
            ]
@@ -451,7 +451,7 @@ mkLBFGSHessianInvInfo state@(n, _m, hist) =
          | (i, (s, _y, _sy)) <- zip [m-1,m-2..] (F.toList hist)
          , (j, (_s, y, _sy)) <- zip [m-1,m-2..] (F.toList hist)
          ]
-    matRInv = if m == 0 then (0 >< 0) [] else inv matR
+    matRInv = inv' matR
     matD = diag $ LA.fromList [sy | (_s, _y, sy) <- F.toList hist]
     matM = fromBlocks $
            [ [konst 0 (m,m), scale (-1) matRInv]
@@ -539,6 +539,9 @@ generalizedCauchyPoint x0 f0 g multiplyB lb ub =
 sub :: (Additive (c t), Linear t c, Num t) => c t -> c t -> c t
 sub x y = x `add` scale (-1) y
 
+
+inv' :: Field t => Matrix t -> Matrix t
+inv' m = if LA.size m == (0,0) then m else inv m
 
 -- ------------------------------------------------------------------------
 
