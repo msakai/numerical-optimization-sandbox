@@ -322,18 +322,24 @@ lbfgsHessianInv state@(n, _m, hist) = F.foldr f h0 hist
     f (s,y,sy) h = updateBFGSHessianInv s y sy h
 
 
+-- ------------------------------------------------------------------------
 -- http://users.iems.northwestern.edu/~nocedal/PDFfiles/limited.pdf
-lbfgsHessian'
+
+
+type LBFGSHessianInfo a = (Int, a, Matrix a, Matrix a)
+
+
+mkLBFGSHessianInfo
   :: forall a. (Field a, Ord a, Normed (Vector a), Show a)
-  => LBFGSState a -> Matrix a
-lbfgsHessian' state@(n, _m, hist) =
+  => LBFGSState a -> LBFGSHessianInfo a
+mkLBFGSHessianInfo state@(n, _m, hist) =
   assert (LA.size matY == (n,m)) $
   assert (LA.size matS == (n,m)) $
   assert (LA.size matW == (n,2*m)) $
   assert (LA.size matL == (m,m)) $
   assert (LA.size matD == (m,m)) $
   assert (LA.size matM == (2*m,2*m)) $
-    scale theta (ident n) `sub` (matW <> matM <> tr matW)
+    (m, theta, matW, matM)
   where
     theta :: a
     theta = lbfgsTheta state
@@ -357,54 +363,35 @@ lbfgsHessian' state@(n, _m, hist) =
            ]
 
 
--- http://users.iems.northwestern.edu/~nocedal/PDFfiles/limited.pdf
+lbfgsHessian'
+  :: forall a. (Field a, Ord a, Normed (Vector a), Show a)
+  => LBFGSState a -> LBFGSHessianInfo a -> Matrix a
+lbfgsHessian' state@(n, _m, _hist) (_m2, theta, matW, matM) =
+    scale theta (ident n) `sub` (matW <> matM <> tr matW)
+
+
 lbfgsMultiplyHessian'
   :: forall a. (Field a, Ord a, Normed (Vector a), Show a)
-  => LBFGSState a -> Vector a -> Vector a
-lbfgsMultiplyHessian' state@(n, _m, hist) =
-  assert (LA.size matY == (n,m)) $
-  assert (LA.size matS == (n,m)) $
-  assert (LA.size matW == (n,2*m)) $
-  assert (LA.size matL == (m,m)) $
-  assert (LA.size matD == (m,m)) $
-  assert (LA.size matMInv == (2*m,2*m)) $
-    \x -> scale theta x `sub` (matW #> (matMInv <\> tr matW #> x))
-  where
-    theta :: a
-    theta = lbfgsTheta state
-
-    m :: Int
-    m = Seq.length hist
-
-    matY, matS, matW, matL, matD, matMInv :: Matrix a
-    matY = if m == 0 then (n >< 0) [] else fromColumns [y | (_s,y,_sy) <- F.toList hist]
-    matS = if m == 0 then (n >< 0) [] else fromColumns [s | (s,_y,_sy) <- F.toList hist]
-    matW = matY ||| scale theta matS
-    matL = (m >< m)
-         [ if i > j then s <.> y else 0
-         | (i, (s, _y, _sy)) <- zip [m-1,m-2..] (F.toList hist)
-         , (j, (_s, y, _sy)) <- zip [m-1,m-2..] (F.toList hist)
-         ]
-    matD = diag $ LA.fromList [sy | (_s, _y, sy) <- F.toList hist]
-    matMInv =
-      fromBlocks
-      [ [scale (-1) matD, tr matL]
-      , [matL, scale theta (tr matS <> matS)]
-      ]
+  => LBFGSState a -> LBFGSHessianInfo a -> Vector a -> Vector a
+lbfgsMultiplyHessian' state@(n, _m, hist) (_m2, theta, matW, matM) x =
+  scale theta x `sub` (matW #> matM #> tr matW #> x)
 
 
--- http://users.iems.northwestern.edu/~nocedal/PDFfiles/limited.pdf
-lbfgsHessianInv'
+
+type LBFGSHessianInvInfo a = (Int, a, Matrix a, Matrix a)
+
+
+mkLBFGSHessianInvInfo
   :: forall a. (Field a, Ord a, Normed (Vector a), Show a)
-  => LBFGSState a -> Matrix a
-lbfgsHessianInv' state@(n, _m, hist) =
+  => LBFGSState a -> LBFGSHessianInvInfo a
+mkLBFGSHessianInvInfo state@(n, _m, hist) =
   assert (LA.size matY == (n,m)) $
   assert (LA.size matS == (n,m)) $
   assert (LA.size matW == (n,2*m)) $
   assert (LA.size matR == (m,m)) $
   assert (LA.size matD == (m,m)) $
   assert (LA.size matM == (2*m,2*m)) $
-    scale (1 / theta) (ident n) `add` (matW <> matM <> tr matW)
+    (m, theta, matW, matM)
   where
     theta :: a
     theta = lbfgsTheta state
@@ -429,45 +416,21 @@ lbfgsHessianInv' state@(n, _m, hist) =
            ]
 
 
--- http://users.iems.northwestern.edu/~nocedal/PDFfiles/limited.pdf
+lbfgsHessianInv'
+  :: forall a. (Field a, Ord a, Normed (Vector a), Show a)
+  => LBFGSState a -> LBFGSHessianInvInfo a -> Matrix a
+lbfgsHessianInv' (n, _m, _hist) (_m2, theta, matW, matM) =
+  scale (1 / theta) (ident n) `add` (matW <> matM <> tr matW)
+
+
 lbfgsMultiplyHessianInv'
   :: forall a. (Field a, Ord a, Normed (Vector a), Show a)
-  => LBFGSState a -> Vector a -> Vector a
-lbfgsMultiplyHessianInv' state@(n, _m, hist) =
-  assert (LA.size matY == (n,m)) $
-  assert (LA.size matS == (n,m)) $
-  assert (LA.size matR == (m,m)) $
-  assert (LA.size vecD == m) $
-    \g ->
-      let vecYtg = scale (1 / theta) (tr matY #> g)
-          vecStg = tr matS #> g
-          vecRInvStg = matRInv #> vecStg
-          vecMWtg1 = scale (-1) vecRInvStg
-          vecMWtg2 = scale (-1) (tr matRInv #> vecYtg)
-                     `add`
-                     (tr matRInv #> ((vecD `mul` vecRInvStg) `add` scale (1 / theta) (tr matY #> matY #> vecRInvStg)))
-          vecWMWtg = scale (1 / theta) (matY #> vecMWtg1) `add` (matS #> vecMWtg2)
-       in scale (1 / theta) g `add` vecWMWtg
-  where
-    theta :: a
-    theta = lbfgsTheta state
+  => LBFGSState a -> LBFGSHessianInvInfo a -> Vector a -> Vector a
+lbfgsMultiplyHessianInv' (n, _m, _hist) (_m2, theta, matW, matM) x =
+  scale (1 / theta) x `add` (matW #> matM #> tr matW #> x)
 
-    m :: Int
-    m = Seq.length hist
 
-    mul = VG.zipWith (*)
-
-    matY, matS, matR, matRInv :: Matrix a
-    matY = if m == 0 then (n >< 0) [] else fromColumns [y | (_s,y,_sy) <- F.toList hist]
-    matS = if m == 0 then (n >< 0) [] else fromColumns [s | (s,_y,_sy) <- F.toList hist]
-    matR = (m >< m)
-         [ if i <= j then s <.> y else 0
-         | (i, (s, _y, _sy)) <- zip [m-1,m-2..] (F.toList hist)
-         , (j, (_s, y, _sy)) <- zip [m-1,m-2..] (F.toList hist)
-         ]
-    matRInv = if m == 0 then (0 >< 0) [] else inv matR
-    vecD :: Vector a
-    vecD = LA.fromList [sy | (_s, _y, sy) <- F.toList hist]
+-- ------------------------------------------------------------------------
 
 
 lbfgsV
