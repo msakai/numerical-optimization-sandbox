@@ -641,13 +641,10 @@ lbfgsbV
 lbfgsbV m f lb ub x0 =
   assert (VG.and $ VG.zipWith (<=) lb x0) $
   assert (VG.and $ VG.zipWith (<=) x0 ub) $
-    go (n, m, Seq.empty) alpha0 (x0, o0, g0)
+    go (n, m, Seq.empty) True (x0, o0, g0)
   where
     n = VG.length x0
     (o0, g0) = f x0
-
-    alpha0 :: a
-    alpha0 = realToFrac $ 1 / norm_2 g0
 
     pgtol :: Double
     pgtol = 1e-5
@@ -655,16 +652,16 @@ lbfgsbV m f lb ub x0 =
     eps :: a
     eps = 2.2 * 1e-16
 
-    go :: LBFGSState a -> a -> (Vector a, a, Vector a) -> [Vector a]
-    go state alpha_ (x, o, g) = x :
+    go :: LBFGSState a -> Bool -> (Vector a, a, Vector a) -> [Vector a]
+    go state isFirstIter (x, o, g) = x :
       if converged then
         []
       else
         case err of
           Just e | e /= LS.ERR_MAXIMUMSTEP -> error (show e)
-          _
-            | sy > eps * (y <.> y) -> go (updateLBFGSState s y sy state) 1.0 (x', o', g')
-            | otherwise -> go state 1.0 (x', o', g')
+          _ ->
+            let state' = if sy > eps * (y <.> y) then updateLBFGSState s y sy state else state
+             in go state' False (x', o', g')
       where
         pg = VG.zipWith3 (\l u x -> clamp (l,u) x) lb ub (x `sub` g) `sub` x
 
@@ -677,10 +674,16 @@ lbfgsbV m f lb ub x0 =
         x_opt = lbfgsbOptimizeSubspace x g lb ub state info xc as
         d = x_opt `sub` x
 
-        (err, alpha, (x', o', g')) = LS.lineSearch LS.defaultParams{ LS.paramsMaxStep = 1.0 } f (x, o, g) d alpha_
+        maxStep = minimum $ LS.paramsMaxStep LS.defaultParams : concat
+          [ [(ub VG.! i - x VG.! i) / di | di > 0] ++
+            [(lb VG.! i - x VG.! i) / di | di < 0]
+          | (di, i) <- zip (VG.toList d) [0..]
+          ]
+        step0 = if isFirstIter then min 1.0 (realToFrac $ 1 / norm_2 g0) else 1.0
+        (err, step, (x', o', g')) = LS.lineSearch LS.defaultParams{ LS.paramsMaxStep = maxStep } f (x, o, g) d step0
 
         s, y :: Vector a
-        s = scale alpha d
+        s = scale step d
         y = g' `add` scale (-1) g
         sy :: a
         sy = s <.> y
