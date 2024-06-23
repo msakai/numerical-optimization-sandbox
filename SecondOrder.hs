@@ -790,6 +790,34 @@ test_LBFGSB_2 = lbfgsb 10 f lb ub x0
     ub = [1.0, 0.5]
 
 
+test_LBFGSB_3 = lbfgsb 10 f lb ub x0
+  where
+    f :: (Fractional a, Floating a) => [a] -> a
+    f [beta1,beta2] = sum [(y - beta1*x / (beta2 + x))**2 | (x,y) <- zip xs ys]
+      where
+        xs = [0.038, 0.194, 0.425, 0.626, 1.253, 2.500, 3.740]
+        ys = [0.050, 0.127, 0.094, 0.2122, 0.2729, 0.2665, 0.3317]
+
+    x0 :: [Double]
+    x0 = [0.9, 0.2]
+
+    lb, ub :: [Double]
+    lb = [0.5, -1/0]
+    ub = [1/0, 0.5]
+
+
+test_LBFGSB_4 = lbfgsb 10 f lb ub x0
+  where
+    f :: (Fractional a, Floating a) => [a] -> a
+    f [x,y,z] = sum [3 * (x + 2)**2, 4 * (y - 1) ** 2, 5 * (z - 10) ** 2, 2 * x * y, 3 * y * z]
+
+    x0 :: [Double]
+    x0 = [0.9, 0.2, -0.4]
+
+    lb, ub :: [Double]
+    lb = [-1, -1, -1]
+    ub = [1, 1, 1]
+
 
 rosenbrock [x,y] = sq (1 - x) + 100 * sq (y - sq x)
   where
