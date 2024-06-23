@@ -490,7 +490,11 @@ generalizedCauchyPoint x0 f0 g multiplyB lb ub =
   assert (LA.size g == n) $
   assert (LA.size lb == n) $
   assert (LA.size ub == n) $
-    go 0 x0 d0 IntSet.empty breakpoints
+  assert (VG.and $ VG.zipWith (<=) lb x0) $
+  assert (VG.and $ VG.zipWith (<=) x0 ub) $
+  assert (VG.and $ VG.zipWith (<=) lb xc) $
+  assert (VG.and $ VG.zipWith (<=) xc ub) $
+    (xc, as)
   where
     n = VG.length x0
 
@@ -509,6 +513,8 @@ generalizedCauchyPoint x0 f0 g multiplyB lb ub =
     d0 :: Vector a
     d0 = scale (-1) g
 
+    (xc, as) = go 0 x0 d0 IntSet.empty breakpoints
+
     {-
     Let Δt := t - tj and x := xj + Δt dj, then:
     f(x0) + g (x - x0) + (1/2) (x - x0)^T B (x - x0)
@@ -524,7 +530,7 @@ generalizedCauchyPoint x0 f0 g multiplyB lb ub =
     go tj xj dj as bps =
       case bps of
         []
-          | IntSet.size as == n -> (xj, as)
+          | a2 == 0 -> (xj, as)
           | otherwise -> (xj `add` scale dt_opt dj, as)
         (tj', i, val) : bps'
           | tj + dt_opt < tj' -> (xj `add` scale dt_opt dj, as)
