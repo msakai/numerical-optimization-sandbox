@@ -487,11 +487,13 @@ generalizedCauchyPoint
   -> Vector a -- ^ upper bounds
   -> (Vector a, IntSet) -- ^ generalized cauchy point and its active set
 generalizedCauchyPoint x0 f0 g multiplyB lb ub =
+  -- pre-conditions
   assert (LA.size g == n) $
   assert (LA.size lb == n) $
   assert (LA.size ub == n) $
   assert (VG.and $ VG.zipWith (<=) lb x0) $
   assert (VG.and $ VG.zipWith (<=) x0 ub) $
+  -- post-conditions
   assert (VG.and $ VG.zipWith (<=) lb xc) $
   assert (VG.and $ VG.zipWith (<=) xc ub) $
     (xc, as)
@@ -555,11 +557,13 @@ lbfgsbOptimizeSubspace
   -> IntSet   -- ^ active set
   -> Vector a
 lbfgsbOptimizeSubspace x0 g lb ub state info@(m, theta, matW, matM) xc as =
-  assert (VG.and $ VG.zipWith (<=) lb x0) $
-  assert (VG.and $ VG.zipWith (<=) x0 ub) $
+  -- pre-conditions
   assert (LA.size g == n) $
   assert (LA.size lb == n) $
   assert (LA.size ub == n) $
+  assert (VG.and $ VG.zipWith (<=) lb x0) $
+  assert (VG.and $ VG.zipWith (<=) x0 ub) $
+  -- some invariants for internal variables
   assert (LA.size matW == (n, 2*m)) $
   assert (LA.size matM == (2*m,2*m)) $
   assert (LA.size xc == n) $
@@ -568,6 +572,7 @@ lbfgsbOptimizeSubspace x0 g lb ub state info@(m, theta, matW, matM) xc as =
   assert (LA.size du == t) $
   assert (0 <= alpha && alpha <= 1) $
   assert (LA.size du' == t) $
+  -- post-conditions
   assert (LA.size x_opt == n) $
   assert (VG.and $ VG.zipWith (<=) lb x_opt) $
   assert (VG.and $ VG.zipWith (<=) x_opt ub) $
