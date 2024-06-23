@@ -416,15 +416,17 @@ lineSearchMoreThuente params evaluate (x0, f0, g0) s step0
           function has a nonpositive value and nonnegative derivative.
 
           ψ(α) <= 0
-          ⇔ φ(α) - φ(0) - μ φ'(0) <= 0
-          ⇔ φ(α) <= φ(0) + μ φ'(0)
+          ⇔ φ(α) - φ(0) - μ φ'(0) α <= 0
+          ⇔ φ(α) <= φ(0) + μ φ'(0) α
           ⇔ sufficientDecrease
 
           ψ'(α) >= 0
-          ⇔ φ'(α) >= 0
-          で、min(μ,η) φ'(0) <= φ'(α) の左辺は少し余裕を持たせている?
+          ⇔ φ'(α) - μ φ'(0) >= 0
+          ⇔ μ φ'(0) <= φ'(α)
+          ⇐ min(μ,η) φ'(0) <= φ'(α)
 
-          ftol (μ) の方が gtol (η) より小さい前提のはずなのに min をとっているのは何故?
+          μ φ'(0) <= φ'(α) ではなく、より弱い min(μ,η) φ'(0) <= φ'(α) を条件にしているのは何故?
+          ftol (μ) の方が gtol (η) より小さい前提なので、通常の場合には同値だが。
          -}
         stage1'
           | stage1 && sufficientDecrease && min (paramsFTol params) (paramsGTol params) * dg0 <= dg = False
