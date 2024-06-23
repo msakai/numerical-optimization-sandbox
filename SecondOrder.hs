@@ -639,6 +639,8 @@ lbfgsbV
   -> Vector a
   -> [Vector a]
 lbfgsbV m f lb ub x0 =
+  assert (VG.length lb == n) $
+  assert (VG.length ub == n) $
   assert (VG.and $ VG.zipWith (<=) lb x0) $
   assert (VG.and $ VG.zipWith (<=) x0 ub) $
     go (n, m, Seq.empty) True (x0, o0, g0)
