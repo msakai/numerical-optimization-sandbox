@@ -609,7 +609,7 @@ lbfgsbOptimizeSubspace x0 g lb ub state info@(m, theta, matW, matM) xc as =
 
 
 lbfgsb
-  :: forall f a. (Traversable f, Field a, Ord a, Normed (Vector a), Show a)
+  :: forall f a. (Traversable f, Field a, Ord a, RealFloat a, Normed (Vector a), Show a)
   => Int
   -> (forall s. Reifies s Tape => f (Reverse s a) -> Reverse s a)
   -> f a
@@ -631,7 +631,7 @@ lbfgsb m f lb ub x0 = map fromVector $ lbfgsbV m evaluate (toVector lb) (toVecto
 
 
 lbfgsbV
-  :: forall a. (Field a, Ord a, Normed (Vector a), Show a)
+  :: forall a. (Field a, Ord a, RealFloat a, Normed (Vector a), Show a)
   => Int
   -> (Vector a -> (a, Vector a))
   -> Vector a
@@ -653,6 +653,12 @@ lbfgsbV m f lb ub x0 =
 
     eps :: a
     eps = 2.2 * 1e-16
+
+    boxed :: Bool
+    boxed = all (not . isInfinite) (VG.toList lb ++ VG.toList ub)
+
+    constrained :: Bool
+    constrained = any (not . isInfinite) (VG.toList lb ++ VG.toList ub)
 
     go :: LBFGSState a -> Bool -> (Vector a, a, Vector a) -> [Vector a]
     go state isFirstIter (x, o, g) = x :
@@ -676,12 +682,23 @@ lbfgsbV m f lb ub x0 =
         x_opt = lbfgsbOptimizeSubspace x g lb ub state info xc as
         d = x_opt `sub` x
 
-        maxStep = minimum $ LS.paramsMaxStep LS.defaultParams : concat
-          [ [(ub VG.! i - x VG.! i) / di | di > 0] ++
-            [(lb VG.! i - x VG.! i) / di | di < 0]
-          | (di, i) <- zip (VG.toList d) [0..]
-          ]
-        step0 = if isFirstIter then min 1.0 (realToFrac $ 1 / norm_2 g0) else 1.0
+        maxStep =
+          if constrained then
+            if isFirstIter then
+              1.0
+            else
+              minimum $ LS.paramsMaxStep LS.defaultParams : concat
+              [ [(ub VG.! i - x VG.! i) / di | di > 0] ++
+                [(lb VG.! i - x VG.! i) / di | di < 0]
+              | (di, i) <- zip (VG.toList d) [0..]
+              ]
+          else
+            LS.paramsMaxStep LS.defaultParams
+        step0 =
+          if isFirstIter && not boxed then
+            min (realToFrac $ 1 / norm_2 d) maxStep
+          else
+            1.0
         (err, step, (x', o', g')) = LS.lineSearch LS.defaultParams{ LS.paramsMaxStep = maxStep } f (x, o, g) d step0
 
         s, y :: Vector a
