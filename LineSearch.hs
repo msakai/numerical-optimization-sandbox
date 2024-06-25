@@ -41,14 +41,9 @@ cubicMinimizer u fu du v fv dv = u + r * d
   where
     d = v - u
     theta = (fu - fv) * 3 / d + du + dv
-    s = maximum [p, q, r]
-      where
-        p = abs theta
-        q = abs du
-        r = abs dv
-    a = theta / s
+    s = maximum [abs theta, abs du, abs dv]
     gamma = (if v < u then negate else id) $
-            s * sqrt (a * a - (du / s) * (dv / s))
+            s * sqrt ((theta / s)**2 - (du / s) * (dv / s))
     p = gamma - du + theta
     q = gamma - du + gamma + dv
     r = p / q
@@ -73,14 +68,9 @@ cubicMinimizer2 u fu du v fv dv xmin xmax
   where
     d = v - u
     theta = (fu - fv) * 3 / d + du + dv
-    s = maximum [p, q, r]
-      where
-        p = abs theta
-        q = abs du
-        r = abs dv
-    a = theta / s
+    s = maximum [abs theta, abs du, abs dv]
     gamma = (if u < v then negate else id) $
-            s * sqrt (max 0 (a * a - (du / s) * (dv / s)))
+            s * sqrt (max 0 ((theta / s)**2 - (du / s) * (dv / s)))
     p = gamma - dv + theta
     q = gamma - dv + gamma + du
     r = p / q
